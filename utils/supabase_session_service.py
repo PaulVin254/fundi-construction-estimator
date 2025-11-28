@@ -83,17 +83,22 @@ class SupabaseSessionService(BaseSessionService):
             history_data = []
             history = session.state.get("history", []) if session.state else []
             
-            for content in history:
+            print(f"🔍 Saving session {session.id}: {len(history)} messages in state")
+            
+            for i, content in enumerate(history):
                 if hasattr(content, 'parts') and hasattr(content, 'role'):
                     parts_data = [{"text": p.text} for p in content.parts if hasattr(p, 'text')]
                     history_data.append({"role": content.role, "parts": parts_data})
+                    print(f"   [{i}] {content.role}: {len(parts_data)} parts")
+            
+            print(f"📤 Uploading {len(history_data)} messages to Supabase")
             
             self.supabase.table("sessions").update({
                 "history": history_data,
                 "updated_at": datetime.now().isoformat()
             }).eq("session_id", session.id).execute()
             
-            print(f"✅ Session updated in Supabase: {session.id}")
+            print(f"✅ Session updated in Supabase: {session.id} ({len(history_data)} messages saved)")
         
         except Exception as e:
             print(f"❌ Error updating session in Supabase: {e}")

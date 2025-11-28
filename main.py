@@ -218,27 +218,36 @@ async def consult_fundi(query: ConstructionQuery):
         
         # Extract the final response from the event stream
         fundi_response = ""
+        
+        # Manually track conversation history since Runner isn't persisting it correctly
+        # Add user message to history
+        current_history = session.state.get("history", []) if session.state else []
+        current_history.append(new_message)
+        
         async for event in events:
             # Check if this is the final response from the agent
             if hasattr(event, "is_final_response") and event.is_final_response():
                 if hasattr(event, "content") and hasattr(event.content, "parts"):
                     fundi_response = event.content.parts[0].text
+                    # Add agent response to history
+                    agent_message = Content(role="model", parts=[Part(text=fundi_response)])
+                    current_history.append(agent_message)
                     break
         
-        # Retrieve updated session with new history
-        updated_session = await session_service.get_session(
-            app_name=APP_NAME,
-            user_id=user_id,
-            session_id=session_id
-        )
+        print(f"🔄 Run complete, manually updating session history...")
         
-        # Extract history from session state and apply memory optimization before saving
-        history_to_save = updated_session.state.get("history", []) if updated_session.state else []
-        await conversation_memory.save_with_optimization(
-            updated_session,
-            history_to_save
-        )
-        print(f"💾 Saved session with {len(history_to_save)} messages")
+        # Update session with new history
+        session.state = {"history": current_history}
+        
+        # Log the history status
+        print(f"📊 Updated session state has {len(current_history)} messages")
+        
+        # Manually save/update session in Supabase to ensure persistence
+        print(f"💾 Manually updating session in Supabase...")
+        await session_service.update_session(session)
+        
+        # Use the updated session for the response
+        updated_session = session
         
         # Check for new HTML report
         files_after = set(glob.glob(os.path.join(output_dir, "*.html")))
@@ -254,7 +263,7 @@ async def consult_fundi(query: ConstructionQuery):
             except Exception as e:
                 print(f"Error reading generated report: {e}")
 
-        # Extract final history count from session state
+        # Get final history count
         final_history = updated_session.state.get("history", []) if updated_session.state else []
         
         return {
