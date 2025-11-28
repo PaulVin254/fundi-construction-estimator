@@ -2,9 +2,11 @@ import json
 from typing import List
 from datetime import datetime
 import time
+import uuid
 from supabase import create_client, Client
 from google.adk.sessions import BaseSessionService, Session
 from google.genai.types import Content, Part
+from google.adk.events.event import Event
 
 class SupabaseSessionService(BaseSessionService):
     def __init__(self, supabase_url: str, supabase_key: str):
@@ -55,9 +57,21 @@ class SupabaseSessionService(BaseSessionService):
             
             # Reconstruct history from JSON
             history = []
+            events = []
             for item in data.get("history", []):
                 parts = [Part(text=p.get("text", "")) for p in item.get("parts", [])]
-                history.append(Content(role=item.get("role"), parts=parts))
+                content = Content(role=item.get("role"), parts=parts)
+                history.append(content)
+                
+                # Create Event for Runner compatibility
+                # Note: We assume the agent name is 'construction_cost_estimator' for model messages
+                author = "user" if item.get("role") == "user" else "construction_cost_estimator"
+                event = Event(
+                    author=author,
+                    content=content,
+                    invocation_id=str(uuid.uuid4()) # Dummy invocation ID needed for Runner
+                )
+                events.append(event)
             
             # Create Session with proper Google ADK structure
             session = Session(
@@ -65,7 +79,7 @@ class SupabaseSessionService(BaseSessionService):
                 app_name=app_name,
                 user_id=user_id,
                 state={"history": history},  # Store history in state
-                events=[],
+                events=events,
                 last_update_time=self._get_unix_timestamp()  # Unix timestamp as float
             )
             

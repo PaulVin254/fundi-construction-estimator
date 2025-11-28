@@ -209,7 +209,23 @@ async def consult_fundi(query: ConstructionQuery):
         # Format the user input as a Content object (required by Google ADK)
         new_message = Content(role="user", parts=[Part(text=query.user_input)])
         
+        # Manually track conversation history since Runner isn't persisting it correctly
+        # Add user message to history
+        current_history = session.state.get("history", []) if session.state else []
+        
+        # IMPORTANT: We must pass the FULL history to the runner/agent if we want context
+        # But Runner.run_async only takes new_message.
+        # The LlmAgent in ADK usually maintains history in the session state if configured correctly.
+        # Since we are manually managing history in session.state['history'], we need to ensure
+        # the agent sees it.
+        
+        # For now, let's append the new message to our local history tracking
+        current_history.append(new_message)
+        
         # Run the agent using run_async with proper parameters
+        # Note: We are relying on the Runner to use the session we passed in constructor
+        # But if Runner doesn't use session.state['history'], we might need to inject it.
+        # However, standard ADK Runner should use the session provided.
         events = runner.run_async(
             user_id=user_id,
             session_id=session_id,
@@ -218,11 +234,6 @@ async def consult_fundi(query: ConstructionQuery):
         
         # Extract the final response from the event stream
         fundi_response = ""
-        
-        # Manually track conversation history since Runner isn't persisting it correctly
-        # Add user message to history
-        current_history = session.state.get("history", []) if session.state else []
-        current_history.append(new_message)
         
         async for event in events:
             # Check if this is the final response from the agent
