@@ -5,86 +5,131 @@
 #   to timestamped files. Used to persist generated estimate reports.
 # =============================================================================
 
-# Import the `datetime` module to generate a unique timestamp for the filename.
-import datetime
-import sys
 import os
+import sys
+import json
+import smtplib
+from datetime import datetime
+from pathlib import Path
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+from xhtml2pdf import pisa  # Library for HTML to PDF conversion
 
 # Add parent directory to path to import retry utilities
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# Import `Path` from `pathlib` for convenient and safe file/directory handling.
-from pathlib import Path
-
-# Import `json` for saving structured estimate data
-import json
-
-# Import retry configuration for robust file operations
 from utils.retry_config import with_retry, FILE_RETRY_CONFIG, get_user_friendly_error
+
+def convert_html_to_pdf(source_html: str, output_filename: str) -> bool:
+    """Utility function to convert HTML string to PDF file."""
+    try:
+        with open(output_filename, "w+b") as result_file:
+            pisa_status = pisa.CreatePDF(source_html, dest=result_file)
+        return not pisa_status.err
+    except Exception as e:
+        print(f"Error converting PDF: {e}")
+        return False
+
+def send_email_with_attachment(recipient_email: str, pdf_path: str, project_name: str):
+    """Sends the PDF report via email."""
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = os.getenv("SMTP_PORT")
+    sender_email = os.getenv("SMTP_EMAIL")
+    sender_password = os.getenv("SMTP_PASSWORD")
+
+    if not all([smtp_server, smtp_port, sender_email, sender_password]):
+        print("⚠️ Email credentials not set in .env. Skipping email.")
+        return False, "Email credentials missing in .env"
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+        msg['Subject'] = f"Fundi Estimate: {project_name}"
+
+        body = f"Hello,\n\nPlease find attached your construction cost estimate for the {project_name}.\n\nBest regards,\nFundi"
+        msg.attach(MIMEText(body, 'plain'))
+
+        with open(pdf_path, "rb") as f:
+            attach = MIMEApplication(f.read(), _subtype="pdf")
+            attach.add_header('Content-Disposition', 'attachment', filename=os.path.basename(pdf_path))
+            msg.attach(attach)
+
+        with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        
+        return True, "Success"
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+        return False, str(e)
 
 # -----------------------------------------------------------------------------
 # TOOL FUNCTION: write_estimate_report
 # -----------------------------------------------------------------------------
 @with_retry(FILE_RETRY_CONFIG)
-def write_estimate_report(html_content: str, estimate_data: dict = None) -> dict:
+def write_estimate_report(html_content: str, estimate_data: dict = None, user_email: str = None) -> dict:
     """
-    Writes a construction cost estimate report to a timestamped HTML file.
-    Includes automatic retry with exponential backoff for file operations.
-
-    Args:
-        html_content (str): Full HTML content of the estimate report as a string.
-        estimate_data (dict): Optional structured estimate data for JSON backup.
-
-    Returns:
-        dict: A dictionary containing the status and generated filenames.
-        
-    Raises:
-        RetryExhaustedError: If all retry attempts fail
-    """
+    Saves the estimate as a PDF and optionally emails it to the user.
     
+    Args:
+        html_content: The full HTML string of the report.
+        estimate_data: Dictionary containing raw estimate numbers (optional).
+        user_email: The email address to send the PDF to (optional).
+    """
     try:
-        # Get the current date and time, format it as YYMMDD_HHMMSS.
-        # Example: "251118_142317"
-        timestamp = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
+        # Ensure output directory exists
+        output_dir = Path("output")
+        output_dir.mkdir(exist_ok=True)
 
-        # Construct the output filenames using the timestamp.
-        # Example: "output/251118_142317_construction_estimate.html"
-        html_filename = f"output/{timestamp}_construction_estimate.html"
-        json_filename = f"output/{timestamp}_construction_estimate.json"
-
-        # Ensure the "output" directory exists. If it doesn't, create it.
-        # `exist_ok=True` prevents an error if the directory already exists.
-        Path("output").mkdir(exist_ok=True)
-
-        # Write the HTML content to the constructed file.
-        # `encoding='utf-8'` ensures proper character encoding.
-        Path(html_filename).write_text(html_content, encoding="utf-8")
-
-        # If estimate data provided, also save as JSON for data portability
-        if estimate_data:
-            Path(json_filename).write_text(
-                json.dumps(estimate_data, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
-
-        # Return a dictionary indicating success and the filenames that were written.
-        return {
-            "status": "success",
-            "html_file": html_filename,
-            "json_file": json_filename if estimate_data else None,
-            "timestamp": timestamp,
-            "message": "Estimate report saved successfully"
-        }
+        # Generate timestamp
+        timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         
-    except Exception as e:
-        # Return graceful error message
-        error_msg = get_user_friendly_error(e)
+        # Define filenames
+        base_name = f"{timestamp}_construction_estimate"
+        html_filename = output_dir / f"{base_name}.html"
+        pdf_filename = output_dir / f"{base_name}.pdf"
+        json_filename = output_dir / f"{base_name}.json"
+
+        # 1. Save HTML (as backup/source)
+        with open(html_filename, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        # 2. Save JSON Data (if provided)
+        if estimate_data:
+            with open(json_filename, "w", encoding="utf-8") as f:
+                json.dump(estimate_data, f, indent=2)
+
+        # 3. Convert to PDF
+        pdf_success = convert_html_to_pdf(html_content, str(pdf_filename))
+        
+        result_message = f"Report generated: {pdf_filename}"
+        email_status = "Not sent (no email provided)"
+
+        # 4. Send Email (if email provided and PDF success)
+        if pdf_success and user_email:
+            sent, error_msg = send_email_with_attachment(user_email, str(pdf_filename), "Residential Project")
+            if sent:
+                email_status = f"Sent to {user_email}"
+                result_message += f" and emailed to {user_email}"
+            else:
+                email_status = f"Failed to send ({error_msg})"
+                result_message += f" (Email failed: {error_msg})"
+
         return {
-            "status": "error",
-            "error": error_msg,
-            "technical_error": str(e),
-            "message": "Failed to save estimate report. Please try again."
+            "success": True,
+            "files": {
+                "html": str(html_filename),
+                "pdf": str(pdf_filename) if pdf_success else None,
+                "json": str(json_filename) if estimate_data else None
+            },
+            "email_status": email_status,
+            "message": result_message
         }
+
+    except Exception as e:
+        return get_user_friendly_error(e, "saving estimate report")
 
 
 # Backward compatibility: alias for old function name

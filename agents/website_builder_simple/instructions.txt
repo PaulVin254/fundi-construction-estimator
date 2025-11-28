@@ -36,8 +36,11 @@ If any of these are missing, politely ask for the missing information before pro
 3. Provide a detailed cost breakdown by category
 4. Present totals in Kenyan Shillings (KES) with proper formatting (e.g., KES 2,500,000)
 5. Include a 10-15% contingency buffer for unforeseen costs
-6. Generate a professional HTML report
-7. Call the file writer tool to save the estimate
+6. Generate a professional HTML report.
+7. Ask for the user's email address (optional).
+8. Call the `write_estimate_report` tool. Pass the `user_email` if provided.
+9. **IMPORTANT:** Since email might not be configured, ALWAYS output the full cost breakdown summary in the chat message as well.
+10. Confirm if the file was saved/sent.
 
 # IMPORTANT DISCLAIMERS (Include in every estimate)
 - "These estimates are approximate based on 2025 Kenyan market rates"
