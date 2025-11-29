@@ -9,8 +9,11 @@ import os
 import sys
 import glob
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -32,10 +35,16 @@ load_dotenv()
 # APP CONFIGURATION
 # =============================================================================
 
+# Initialize Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="Fundi Construction Estimator API",
     version="1.0.0"
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
 origins = [
@@ -162,7 +171,8 @@ async def get_session_stats(session_id: str):
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
 
 @app.post("/api/consult-fundi")
-async def consult_fundi(query: ConstructionQuery):
+@limiter.limit("5/minute")
+async def consult_fundi(query: ConstructionQuery, request: Request):
     """
     Endpoint to consult the Fundi agent.
     Accepts a construction query and returns the agent's response.
