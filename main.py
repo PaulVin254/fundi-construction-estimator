@@ -8,6 +8,7 @@
 import os
 import sys
 import glob
+import asyncio
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +23,9 @@ from google.adk.runners import Runner
 from google.genai.types import Content, Part
 from utils.supabase_session_service import SupabaseSessionService
 from utils.memory_manager import MemoryManager, ConversationMemory, WindowBasedCompaction
+
+# Import Estimate Delivery System
+from estimate_delivery import generate_simple_pdf, handle_estimate_workflow
 
 # Import the agent
 # Ensure the agents directory is in the python path
@@ -270,6 +274,41 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         # Use the updated session for the response
         updated_session = session
         
+        # === AUTO-SEND ESTIMATE ===
+        if query.email and query.name:
+            print(f"📧 Attempting to send estimate to {query.email}...")
+            
+            # 1. Prepare data for the PDF
+            # We truncate the response if it's too long for the table
+            display_text = fundi_response[:1000] + "..." if len(fundi_response) > 1000 else fundi_response
+            
+            estimate_items = [
+                {"item": "Consultation", "description": "AI Construction Consultation", "cost": "0.00"},
+                {"item": "Summary", "description": display_text, "cost": ""} 
+            ]
+            
+            # 2. Generate PDF (Run in thread to avoid blocking)
+            pdf_bytes = await asyncio.to_thread(
+                generate_simple_pdf,
+                client_data={"name": query.name, "email": query.email, "project": "Consultation"},
+                estimate_items=estimate_items
+            )
+            
+            # 3. Send Workflow (Run in background task)
+            if pdf_bytes:
+                print(f"📄 PDF generated ({len(pdf_bytes)} bytes). Starting background delivery task...")
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        handle_estimate_workflow, 
+                        query.email, 
+                        query.name, 
+                        pdf_bytes
+                    )
+                )
+            else:
+                print("❌ PDF generation failed, skipping email delivery.")
+        # ==========================
+
         # Check for new HTML report
         files_after = set(glob.glob(os.path.join(output_dir, "*.html")))
         new_files = files_after - files_before
