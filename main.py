@@ -195,13 +195,24 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                 session_id=session_id
             )
             print(f"✅ Retrieved existing session: {session_id}")
+            
+            # Update user details if provided in the query
+            if query.name or query.email:
+                await session_service.update_session(
+                    session, 
+                    user_name=query.name, 
+                    user_email=query.email
+                )
+                
         except Exception:
             # Session doesn't exist, create a new one
             print(f"✨ Creating new session for {session_id}")
             session = await session_service.create_session(
                 app_name=APP_NAME,
                 user_id=user_id,
-                session_id=session_id
+                session_id=session_id,
+                user_name=query.name,
+                user_email=query.email
             )
         
         # Get history prepared for LLM (with memory optimization)

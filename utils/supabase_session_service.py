@@ -20,7 +20,7 @@ class SupabaseSessionService(BaseSessionService):
         """Get current Unix timestamp (seconds since epoch)"""
         return time.time()
 
-    async def create_session(self, app_name: str, user_id: str, session_id: str) -> Session:
+    async def create_session(self, app_name: str, user_id: str, session_id: str, user_name: str = None, user_email: str = None) -> Session:
         """Create a new session with proper Google ADK Session structure"""
         # Create Session with required fields
         session = Session(
@@ -33,12 +33,20 @@ class SupabaseSessionService(BaseSessionService):
         )
         
         try:
-            self.supabase.table("sessions").insert({
+            data = {
                 "session_id": session_id,
                 "app_name": app_name,
                 "user_id": user_id,
                 "history": []
-            }).execute()
+            }
+            
+            # Add optional user details if provided
+            if user_name:
+                data["user_name"] = user_name
+            if user_email:
+                data["user_email"] = user_email
+                
+            self.supabase.table("sessions").insert(data).execute()
             print(f"✅ Session created in Supabase: {session_id}")
         except Exception as e:
             print(f"⚠️ Error creating session in Supabase: {e}")
@@ -90,7 +98,7 @@ class SupabaseSessionService(BaseSessionService):
             print(f"⚠️ Session not found in Supabase: {e}")
             raise Exception(f"Session {session_id} not found")
 
-    async def update_session(self, session: Session) -> None:
+    async def update_session(self, session: Session, user_name: str = None, user_email: str = None) -> None:
         """Update a session in Supabase"""
         try:
             # Extract history from state
@@ -107,10 +115,18 @@ class SupabaseSessionService(BaseSessionService):
             
             print(f"📤 Uploading {len(history_data)} messages to Supabase")
             
-            self.supabase.table("sessions").update({
+            update_data = {
                 "history": history_data,
                 "updated_at": datetime.now().isoformat()
-            }).eq("session_id", session.id).execute()
+            }
+            
+            # Update user details if provided
+            if user_name:
+                update_data["user_name"] = user_name
+            if user_email:
+                update_data["user_email"] = user_email
+            
+            self.supabase.table("sessions").update(update_data).eq("session_id", session.id).execute()
             
             print(f"✅ Session updated in Supabase: {session.id} ({len(history_data)} messages saved)")
         
