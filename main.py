@@ -72,6 +72,8 @@ app.add_middleware(
 class ConstructionQuery(BaseModel):
     user_input: str
     email: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
 
 class SessionStatsResponse(BaseModel):
     session_id: str
