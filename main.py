@@ -9,6 +9,7 @@ import os
 import sys
 import glob
 import asyncio
+import re
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -330,6 +331,11 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                         )
                     else:
                         print("❌ PDF generation failed, skipping email delivery.")
+                        
+                    # === CRITICAL FIX: REMOVE DATA FROM CHAT ===
+                    # Remove the XML block so the user doesn't see the raw code
+                    fundi_response = re.sub(r"<ESTIMATE_DATA>.*?</ESTIMATE_DATA>", "", fundi_response, flags=re.DOTALL).strip()
+                    
                 else:
                     print("⚠️ <ESTIMATE_DATA> tag found but regex failed to extract content.")
                     
