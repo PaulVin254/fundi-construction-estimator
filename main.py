@@ -287,39 +287,54 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         # Use the updated session for the response
         updated_session = session
         
-        # === AUTO-SEND ESTIMATE ===
-        if query.email and query.name:
-            print(f"📧 Attempting to send estimate to {query.email}...")
+        # === AUTO-SEND ESTIMATE (TEASER WORKFLOW) ===
+        # Only trigger if we have email AND the agent output contains the special tag
+        if query.email and "<ESTIMATE_DATA>" in fundi_response:
+            print(f"📧 Estimate Data detected! Attempting to send PDF to {query.email}...")
             
-            # 1. Prepare data for the PDF
-            # We truncate the response if it's too long for the table
-            display_text = fundi_response[:1000] + "..." if len(fundi_response) > 1000 else fundi_response
-            
-            estimate_items = [
-                {"item": "Consultation", "description": "AI Construction Consultation", "cost": "0.00"},
-                {"item": "Summary", "description": display_text, "cost": ""} 
-            ]
-            
-            # 2. Generate PDF (Run in thread to avoid blocking)
-            pdf_bytes = await asyncio.to_thread(
-                generate_simple_pdf,
-                client_data={"name": query.name, "email": query.email, "project": "Consultation"},
-                estimate_items=estimate_items
-            )
-            
-            # 3. Send Workflow (Run in background task)
-            if pdf_bytes:
-                print(f"📄 PDF generated ({len(pdf_bytes)} bytes). Starting background delivery task...")
-                asyncio.create_task(
-                    asyncio.to_thread(
-                        handle_estimate_workflow, 
-                        query.email, 
-                        query.name, 
-                        pdf_bytes
+            try:
+                # 1. Extract JSON Data from the tag
+                import json
+                import re
+                
+                # Regex to find content between tags
+                match = re.search(r'<ESTIMATE_DATA>(.*?)</ESTIMATE_DATA>', fundi_response, re.DOTALL)
+                if match:
+                    json_str = match.group(1).strip()
+                    estimate_data = json.loads(json_str)
+                    
+                    # 2. Generate PDF with structured data
+                    # Use the name from the query, or fallback to the one in the JSON
+                    client_name = query.name or estimate_data.get("client_name", "Valued Client")
+                    
+                    pdf_bytes = await asyncio.to_thread(
+                        generate_simple_pdf,
+                        client_data={
+                            "name": client_name, 
+                            "email": query.email, 
+                            "project": estimate_data.get("project_title", "Construction Estimate")
+                        },
+                        estimate_items=estimate_data.get("items", [])
                     )
-                )
-            else:
-                print("❌ PDF generation failed, skipping email delivery.")
+                    
+                    # 3. Send Workflow (Run in background task)
+                    if pdf_bytes:
+                        print(f"📄 PDF generated ({len(pdf_bytes)} bytes). Starting background delivery task...")
+                        asyncio.create_task(
+                            asyncio.to_thread(
+                                handle_estimate_workflow, 
+                                query.email, 
+                                client_name, 
+                                pdf_bytes
+                            )
+                        )
+                    else:
+                        print("❌ PDF generation failed, skipping email delivery.")
+                else:
+                    print("⚠️ <ESTIMATE_DATA> tag found but regex failed to extract content.")
+                    
+            except Exception as e:
+                print(f"❌ Error processing estimate data: {e}")
         # ==========================
 
         # Check for new HTML report

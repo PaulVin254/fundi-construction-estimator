@@ -41,7 +41,7 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
     total_cost = 0.0
     rows_html = ""
     
-    for item in estimate_items:
+    for i, item in enumerate(estimate_items):
         cost_str = str(item.get('cost', '0')).replace(',', '').replace('KES', '').strip()
         try:
             cost_val = float(cost_str)
@@ -49,11 +49,14 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
         except ValueError:
             cost_val = 0.0
             
+        # Alternating row colors
+        bg_color = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+            
         rows_html += f"""
-        <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{item.get('item', '')}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">{item.get('description', '')}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">{cost_val:,.2f}</td>
+        <tr style="background-color: {bg_color};">
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">{item.get('item', '')}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">{item.get('description', '')}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; font-family: monospace;">{cost_val:,.2f}</td>
         </tr>
         """
 
@@ -76,29 +79,48 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
             }}
             body {{
                 font-family: Helvetica, sans-serif;
-                font-size: 12px;
+                font-size: 11px;
                 color: #333333;
+                line-height: 1.4;
             }}
             .header-table {{
                 width: 100%;
-                margin-bottom: 20px;
-                border-bottom: 2px solid #eeeeee;
+                margin-bottom: 30px;
+                border-bottom: 3px solid #2c3e50;
+                padding-bottom: 10px;
             }}
             .logo {{
-                width: 120px;
+                width: 150px;
                 height: auto;
             }}
             .title {{
-                font-size: 24px;
+                font-size: 28px;
                 font-weight: bold;
                 color: #2c3e50;
                 text-align: right;
+                margin-bottom: 5px;
+            }}
+            .subtitle {{
+                font-size: 12px;
+                color: #7f8c8d;
+                text-align: right;
             }}
             .client-box {{
-                background-color: #f9f9f9;
-                padding: 15px;
-                margin-bottom: 20px;
-                border: 1px solid #eeeeee;
+                background-color: #f8f9fa;
+                padding: 20px;
+                margin-bottom: 30px;
+                border-left: 5px solid #2c3e50;
+                border-radius: 4px;
+            }}
+            .client-box h3 {{
+                margin-top: 0;
+                color: #2c3e50;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+                margin-bottom: 10px;
             }}
             .items-table {{
                 width: 100%;
@@ -106,36 +128,48 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
                 margin-top: 20px;
             }}
             .items-table th {{
-                background-color: #f2f2f2;
-                color: #555555;
+                background-color: #2c3e50;
+                color: #ffffff;
                 font-weight: bold;
-                padding: 10px;
+                padding: 12px;
                 text-align: left;
-                border-bottom: 2px solid #dddddd;
+                font-size: 12px;
+                text-transform: uppercase;
             }}
             .total-row td {{
                 font-weight: bold;
-                font-size: 14px;
-                padding-top: 10px;
-                border-top: 2px solid #333333;
+                font-size: 16px;
+                padding: 15px;
+                background-color: #2c3e50;
+                color: #ffffff;
+                text-align: right;
             }}
             .watermark {{
                 position: fixed;
-                top: 50%;
+                top: 40%;
                 left: 50%;
                 transform: rotate(45deg);
-                font-size: 80px;
-                color: #eeeeee;
+                font-size: 100px;
+                color: #ecf0f1;
                 z-index: -1000;
                 text-align: center;
                 width: 100%;
-                opacity: 0.3;
+                opacity: 0.4;
+                font-weight: bold;
+            }}
+            .disclaimer {{
+                font-size: 9px;
+                color: #7f8c8d;
+                margin-top: 30px;
+                text-align: justify;
+                border-top: 1px solid #eee;
+                padding-top: 10px;
             }}
         </style>
     </head>
     <body>
         <!-- Watermark -->
-        <div class="watermark">ROUGH ESTIMATE</div>
+        <div class="watermark">ESTIMATE</div>
 
         <!-- Header Layout using Table -->
         <table class="header-table">
@@ -145,43 +179,60 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
                 </td>
                 <td valign="middle" align="right">
                     <div class="title">Construction Estimate</div>
-                    <div style="color: #777;">Generated by Fundi Agent</div>
+                    <div class="subtitle">Generated by Fundi Agent</div>
+                    <div class="subtitle">Date: {uuid.uuid4().hex[:8]}</div>
                 </td>
             </tr>
         </table>
 
         <!-- Client Info -->
         <div class="client-box">
-            <h3 style="margin-top: 0; color: #555;">Client Details</h3>
-            <p>
-                <b>Name:</b> {client_data.get('name', 'Valued Client')}<br/>
-                <b>Email:</b> {client_data.get('email', 'N/A')}<br/>
-                <b>Project:</b> {client_data.get('project', 'Residential Construction')}
-            </p>
+            <h3>Client Details</h3>
+            <table width="100%">
+                <tr>
+                    <td width="15%"><b>Name:</b></td>
+                    <td width="35%">{client_data.get('name', 'Valued Client')}</td>
+                    <td width="15%"><b>Project:</b></td>
+                    <td width="35%">{client_data.get('project', 'Residential Construction')}</td>
+                </tr>
+                <tr>
+                    <td><b>Email:</b></td>
+                    <td>{client_data.get('email', 'N/A')}</td>
+                    <td><b>Ref ID:</b></td>
+                    <td>{uuid.uuid4().hex[:8].upper()}</td>
+                </tr>
+            </table>
         </div>
 
         <!-- Items Table -->
         <table class="items-table">
             <thead>
                 <tr>
-                    <th width="30%">Item</th>
-                    <th width="50%">Description</th>
+                    <th width="25%">Item</th>
+                    <th width="55%">Description</th>
                     <th width="20%" align="right">Cost (KES)</th>
                 </tr>
             </thead>
             <tbody>
                 {rows_html}
                 <tr class="total-row">
-                    <td colspan="2" align="right">Total Estimated Cost:</td>
-                    <td align="right">{total_cost:,.2f}</td>
+                    <td colspan="2">TOTAL ESTIMATED COST</td>
+                    <td>{total_cost:,.2f}</td>
                 </tr>
             </tbody>
         </table>
 
+        <!-- Disclaimer -->
+        <div class="disclaimer">
+            <b>Disclaimer:</b> This is an AI-generated rough estimate based on 2025 Kenyan market rates. 
+            Actual costs may vary significantly based on specific materials chosen, contractor rates, site conditions, and market fluctuations. 
+            This document does not constitute a binding contract or a guaranteed price. 
+            We strongly recommend obtaining at least three professional quotes from licensed contractors and consulting with a quantity surveyor before commencing construction.
+        </div>
+
         <!-- Footer (Defined in @page frame) -->
         <div id="footerContent" align="center" style="color: #999; font-size: 10px;">
-            This is an AI-generated rough estimate. Actual costs may vary based on site conditions.
-            <br/>&copy; 2025 Eris Engineering.
+            &copy; 2025 Eris Engineering. All Rights Reserved. | www.eris.co.ke
         </div>
     </body>
     </html>
