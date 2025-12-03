@@ -75,6 +75,7 @@ origins = [
     "http://localhost:3000",
     "http://localhost:5173",
     "https://eris.co.ke",
+    "https://www.eris.co.ke",
     "https://paulwakoli.me",
     "https://www.paulwakoli.me"
 ]
