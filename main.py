@@ -10,8 +10,11 @@ import sys
 import glob
 import asyncio
 import re
+import json
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -48,6 +51,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    error_details = exc.errors()
+    print(f"❌ VALIDATION ERROR on {request.url.path}:")
+    print(f"   Details: {error_details}")
+    try:
+        body = await request.json()
+        print(f"   Received Body: {json.dumps(body, indent=2)}")
+    except:
+        print("   Could not read body")
+        
+    return JSONResponse(
+        status_code=422,
+        content={"detail": error_details},
+    )
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -57,7 +76,7 @@ origins = [
     "http://localhost:5173",
     "https://eris.co.ke",
     "https://paulwakoli.me",
-    "https://www.paulwakoli.me",
+    "https://www.paulwakoli.me"
 ]
 
 app.add_middleware(
@@ -78,11 +97,23 @@ class ConstructionQuery(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
 
-class EstimateGenerationRequest(BaseModel):
-    name: str
-    email: EmailStr
+class EstimateData(BaseModel):
+    client_name: Optional[str] = None
     project_title: str
     items: List[Dict]
+    total_cost: Optional[str] = None
+    cost_per_sqm: Optional[str] = None
+
+class EstimateGenerationRequest(BaseModel):
+    session_id: Optional[str] = None
+    name: Optional[str] = None
+    client_name: Optional[str] = None
+    email: Optional[str] = None
+    estimate_data: EstimateData
+
+    @property
+    def final_name(self):
+        return self.name or self.client_name or self.estimate_data.client_name or "Valued Client"
 
 class SessionStatsResponse(BaseModel):
     session_id: str
@@ -187,23 +218,62 @@ async def get_session_stats(session_id: str):
 
 @app.post("/api/generate-estimate")
 @limiter.limit("5/minute")
-async def generate_estimate(request: EstimateGenerationRequest, req: Request):
+async def generate_estimate(payload: EstimateGenerationRequest, request: Request):
     """
     Dedicated endpoint to generate and email the PDF estimate.
     Triggered manually by the user from the frontend.
     """
     try:
-        print(f"📄 Manual PDF Generation requested for {request.email}...")
+        print(f"📄 Manual PDF Generation requested...")
+        
+        # Resolve Name and Email from Session if missing
+        final_email = payload.email
+        final_name = payload.final_name
+        
+        # If email is missing or invalid, try to fetch from session
+        if not final_email or "@" not in final_email:
+            session_id_to_use = payload.session_id or payload.email # Fallback to email field if it holds session_id
+            
+            if session_id_to_use:
+                print(f"🔍 Fetching session data for: {session_id_to_use}")
+                try:
+                    session = await session_service.create_session(
+                        app_name=APP_NAME,
+                        session_id=session_id_to_use
+                    )
+                    # Note: create_session actually gets existing if it exists
+                    
+                    if session:
+                        if not final_email and session.user_email:
+                            final_email = session.user_email
+                            print(f"   ✅ Found email in session: {final_email}")
+                        
+                        # Update name if it's just "Valued Client"
+                        if final_name == "Valued Client" and session.user_name:
+                            final_name = session.user_name
+                            print(f"   ✅ Found name in session: {final_name}")
+                except Exception as e:
+                    print(f"   ⚠️ Could not fetch session: {e}")
+
+        # Final Validation
+        if not final_email or "@" not in final_email:
+             raise HTTPException(status_code=400, detail="Email address is required. Please provide it or ensure your session is active.")
+
+        print(f"🚀 Generating PDF for {final_name} <{final_email}>")
+
+        # Extract data from the nested object
+        project_title = payload.estimate_data.project_title
+        items = payload.estimate_data.items
         
         # 1. Generate PDF
         pdf_bytes = await asyncio.to_thread(
             generate_simple_pdf,
             client_data={
-                "name": request.name, 
-                "email": request.email, 
-                "project": request.project_title
+                "name": final_name, 
+                "email": final_email, 
+                "project": project_title
             },
-            estimate_items=request.items
+            estimate_items=items
         )
         
         # 2. Send Workflow (Background)
@@ -211,15 +281,17 @@ async def generate_estimate(request: EstimateGenerationRequest, req: Request):
             asyncio.create_task(
                 asyncio.to_thread(
                     handle_estimate_workflow, 
-                    request.email, 
-                    request.name, 
+                    final_email, 
+                    final_name, 
                     pdf_bytes
                 )
             )
-            return {"status": "success", "message": "Estimate is being generated and sent."}
+            return {"status": "success", "message": f"Estimate sent to {final_email}"}
         else:
             raise HTTPException(status_code=500, detail="PDF generation failed")
             
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Error in generate-estimate: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -253,6 +325,14 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                     user_name=query.name, 
                     user_email=query.email
                 )
+                # === FIX: Also save to session.state so it's accessible in Python ===
+                if session.state is None:
+                    session.state = {}
+                if query.name:
+                    session.state["user_name"] = query.name
+                if query.email:
+                    session.state["user_email"] = query.email
+                # ===================================================================
                 
         except Exception:
             # Session doesn't exist, create a new one
@@ -264,6 +344,14 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                 user_name=query.name,
                 user_email=query.email
             )
+            # === FIX: Initialize state with user details ===
+            if session.state is None:
+                session.state = {}
+            if query.name:
+                session.state["user_name"] = query.name
+            if query.email:
+                session.state["user_email"] = query.email
+            # ===============================================
         
         # Get history prepared for LLM (with memory optimization)
         optimized_history = await conversation_memory.get_optimized_history(session)
@@ -281,11 +369,46 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         os.makedirs(output_dir, exist_ok=True)
         files_before = set(glob.glob(os.path.join(output_dir, "*.html")))
 
+        # === INJECT CONTEXT (FIXED) ===
+        # If we know the user's name/email from the session, tell the Agent silently.
+        user_text = query.user_input
+        context_note = ""
+        
+        # 1. Try to get from attributes (safely)
+        s_name = getattr(session, "user_name", None)
+        s_email = getattr(session, "user_email", None)
+        
+        # 2. Fallback: Try to get from state (where we just saved it)
+        if not s_name and session.state:
+            s_name = session.state.get("user_name")
+        if not s_email and session.state:
+            s_email = session.state.get("user_email")
+            
+        if s_name or s_email:
+            name_str = s_name or "Valued Client"
+            email_str = s_email or "unknown"
+            context_note = (
+                f"[System Note: The user is logged in as {name_str} ({email_str}). "
+                f"If they ask for a report, DO NOT ask for their email again. "
+                f"Instead, immediately generate the <ESTIMATE_DATA> block so the 'Email Report' button appears.]"
+            )
+            
+        if context_note:
+            # Prepend context to the user's message so the Agent sees it
+            print(f"🧠 Injecting context: {context_note}")
+            user_text = f"{context_note}\n\n{query.user_input}"
+        # ==============================
+
         # Format the user input as a Content object (required by Google ADK)
-        new_message = Content(role="user", parts=[Part(text=query.user_input)])
+        # We use the modified user_text for the Agent to see
+        new_message = Content(role="user", parts=[Part(text=user_text)])
         
         # Manually track conversation history since Runner isn't persisting it correctly
         # Add user message to history
+        # NOTE: We store the ORIGINAL user input in history to keep it clean for the user
+        # But we send the MODIFIED input to the runner.
+        # However, since ADK Runner might use the history we pass, we have a dilemma.
+        # For now, let's store the modified version so the context persists in memory too.
         current_history = session.state.get("history", []) if session.state else []
         
         # IMPORTANT: We must pass the FULL history to the runner/agent if we want context
@@ -323,7 +446,17 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         print(f"🔄 Run complete, manually updating session history...")
         
         # Update session with new history
-        session.state = {"history": current_history}
+        if session.state is None:
+            session.state = {}
+        session.state["history"] = current_history
+        
+        # === PERSISTENCE: Re-save user details to session.state ===
+        # Ensure user details persist across updates
+        if s_name:
+            session.state["user_name"] = s_name
+        if s_email:
+            session.state["user_email"] = s_email
+        # ===========================================================
         
         # Log the history status
         print(f"📊 Updated session state has {len(current_history)} messages")
@@ -351,6 +484,15 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                     
                     # 2. Clean the response (Remove XML block)
                     fundi_response = re.sub(r"<ESTIMATE_DATA>.*?</ESTIMATE_DATA>", "", fundi_response, flags=re.DOTALL).strip()
+                    
+                    # 3. Clean up leftover markdown code fences
+                    # Remove empty ```xml ``` or ``` ``` blocks
+                    fundi_response = re.sub(r"```xml\s*```", "", fundi_response).strip()
+                    fundi_response = re.sub(r"```\s*```", "", fundi_response).strip()
+                    # Remove any standalone ``` that might be left
+                    fundi_response = re.sub(r"```\w*\s*\n?\s*```", "", fundi_response).strip()
+                    # Clean up multiple newlines left behind
+                    fundi_response = re.sub(r"\n{3,}", "\n\n", fundi_response).strip()
                 else:
                     print("⚠️ <ESTIMATE_DATA> tag found but regex failed to extract content.")
             except Exception as e:
