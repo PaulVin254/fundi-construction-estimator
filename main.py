@@ -10,13 +10,13 @@ import sys
 import glob
 import asyncio
 import re
-from typing import Optional
+from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 
 # Import ADK components
@@ -75,6 +75,12 @@ class ConstructionQuery(BaseModel):
     email: Optional[str] = None
     name: Optional[str] = None
     phone: Optional[str] = None
+
+class EstimateGenerationRequest(BaseModel):
+    name: str
+    email: EmailStr
+    project_title: str
+    items: List[Dict]
 
 class SessionStatsResponse(BaseModel):
     session_id: str
@@ -176,6 +182,45 @@ async def get_session_stats(session_id: str):
     except Exception as e:
         print(f"Error getting session stats: {e}")
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+@app.post("/api/generate-estimate")
+@limiter.limit("5/minute")
+async def generate_estimate(request: EstimateGenerationRequest, req: Request):
+    """
+    Dedicated endpoint to generate and email the PDF estimate.
+    Triggered manually by the user from the frontend.
+    """
+    try:
+        print(f"📄 Manual PDF Generation requested for {request.email}...")
+        
+        # 1. Generate PDF
+        pdf_bytes = await asyncio.to_thread(
+            generate_simple_pdf,
+            client_data={
+                "name": request.name, 
+                "email": request.email, 
+                "project": request.project_title
+            },
+            estimate_items=request.items
+        )
+        
+        # 2. Send Workflow (Background)
+        if pdf_bytes:
+            asyncio.create_task(
+                asyncio.to_thread(
+                    handle_estimate_workflow, 
+                    request.email, 
+                    request.name, 
+                    pdf_bytes
+                )
+            )
+            return {"status": "success", "message": "Estimate is being generated and sent."}
+        else:
+            raise HTTPException(status_code=500, detail="PDF generation failed")
+            
+    except Exception as e:
+        print(f"Error in generate-estimate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/consult-fundi")
 @limiter.limit("5/minute")
@@ -288,57 +333,24 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         # Use the updated session for the response
         updated_session = session
         
-        # === AUTO-SEND ESTIMATE (TEASER WORKFLOW) ===
-        # Only trigger if we have email AND the agent output contains the special tag
-        if query.email and "<ESTIMATE_DATA>" in fundi_response:
-            print(f"📧 Estimate Data detected! Attempting to send PDF to {query.email}...")
-            
+        # === ESTIMATE DATA DETECTION (CLIENT-SIDE TRIGGER) ===
+        estimate_data = None
+        show_estimate_button = False
+        
+        if "<ESTIMATE_DATA>" in fundi_response:
+            print(f"📧 Estimate Data detected! Preparing structured response...")
             try:
                 # 1. Extract JSON Data from the tag
-                import json
-                import re
-                
-                # Regex to find content between tags
                 match = re.search(r'<ESTIMATE_DATA>(.*?)</ESTIMATE_DATA>', fundi_response, re.DOTALL)
                 if match:
                     json_str = match.group(1).strip()
                     estimate_data = json.loads(json_str)
+                    show_estimate_button = True
                     
-                    # 2. Generate PDF with structured data
-                    # Use the name from the query, or fallback to the one in the JSON
-                    client_name = query.name or estimate_data.get("client_name", "Valued Client")
-                    
-                    pdf_bytes = await asyncio.to_thread(
-                        generate_simple_pdf,
-                        client_data={
-                            "name": client_name, 
-                            "email": query.email, 
-                            "project": estimate_data.get("project_title", "Construction Estimate")
-                        },
-                        estimate_items=estimate_data.get("items", [])
-                    )
-                    
-                    # 3. Send Workflow (Run in background task)
-                    if pdf_bytes:
-                        print(f"📄 PDF generated ({len(pdf_bytes)} bytes). Starting background delivery task...")
-                        asyncio.create_task(
-                            asyncio.to_thread(
-                                handle_estimate_workflow, 
-                                query.email, 
-                                client_name, 
-                                pdf_bytes
-                            )
-                        )
-                    else:
-                        print("❌ PDF generation failed, skipping email delivery.")
-                        
-                    # === CRITICAL FIX: REMOVE DATA FROM CHAT ===
-                    # Remove the XML block so the user doesn't see the raw code
+                    # 2. Clean the response (Remove XML block)
                     fundi_response = re.sub(r"<ESTIMATE_DATA>.*?</ESTIMATE_DATA>", "", fundi_response, flags=re.DOTALL).strip()
-                    
                 else:
                     print("⚠️ <ESTIMATE_DATA> tag found but regex failed to extract content.")
-                    
             except Exception as e:
                 print(f"❌ Error processing estimate data: {e}")
         # ==========================
@@ -363,6 +375,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         return {
             "status": "success",
             "fundi_response": fundi_response,
+            "estimate_data": estimate_data,
+            "show_estimate_button": show_estimate_button,
             "html_report": html_report,
             "session_info": {
                 "session_id": session_id,
