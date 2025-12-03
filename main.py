@@ -29,7 +29,7 @@ from utils.supabase_session_service import SupabaseSessionService
 from utils.memory_manager import MemoryManager, ConversationMemory, WindowBasedCompaction
 
 # Import Estimate Delivery System
-from estimate_delivery import generate_simple_pdf, handle_estimate_workflow
+from estimate_delivery import generate_professional_pdf, generate_simple_pdf, handle_estimate_workflow
 
 # Import the agent
 # Ensure the agents directory is in the python path
@@ -266,9 +266,9 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
         project_title = payload.estimate_data.project_title
         items = payload.estimate_data.items
         
-        # 1. Generate PDF
+        # 1. Generate PDF (Use professional template if WeasyPrint available)
         pdf_bytes = await asyncio.to_thread(
-            generate_simple_pdf,
+            generate_professional_pdf,
             client_data={
                 "name": final_name, 
                 "email": final_email, 
@@ -473,6 +473,10 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         estimate_data = None
         show_estimate_button = False
         
+        print(f"🔍 Checking for ESTIMATE_DATA in response...")
+        print(f"   Response length: {len(fundi_response)} chars")
+        print(f"   Contains '<ESTIMATE_DATA>': {'<ESTIMATE_DATA>' in fundi_response}")
+        
         if "<ESTIMATE_DATA>" in fundi_response:
             print(f"📧 Estimate Data detected! Preparing structured response...")
             try:
@@ -480,11 +484,15 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                 match = re.search(r'<ESTIMATE_DATA>(.*?)</ESTIMATE_DATA>', fundi_response, re.DOTALL)
                 if match:
                     json_str = match.group(1).strip()
+                    print(f"   Extracted JSON length: {len(json_str)} chars")
                     estimate_data = json.loads(json_str)
                     show_estimate_button = True
+                    print(f"   ✅ JSON parsed successfully. show_estimate_button = {show_estimate_button}")
                     
                     # 2. Clean the response (Remove XML block)
+                    original_length = len(fundi_response)
                     fundi_response = re.sub(r"<ESTIMATE_DATA>.*?</ESTIMATE_DATA>", "", fundi_response, flags=re.DOTALL).strip()
+                    print(f"   Cleaned response: {original_length} -> {len(fundi_response)} chars")
                     
                     # 3. Clean up leftover markdown code fences
                     # Remove empty ```xml ``` or ``` ``` blocks
@@ -498,6 +506,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                     print("⚠️ <ESTIMATE_DATA> tag found but regex failed to extract content.")
             except Exception as e:
                 print(f"❌ Error processing estimate data: {e}")
+        else:
+            print(f"   ℹ️ No ESTIMATE_DATA block found in response.")
         # ==========================
 
         # Check for new HTML report

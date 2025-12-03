@@ -2,10 +2,21 @@ import os
 import uuid
 import io
 import requests
+from datetime import datetime
 from typing import List, Dict, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
+
+# PDF Generation Libraries
+try:
+    from weasyprint import HTML, CSS
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
+    print("⚠️ WeasyPrint not available. Falling back to xhtml2pdf.")
+
 from xhtml2pdf import pisa
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 # Load environment variables
 load_dotenv()
@@ -21,13 +32,97 @@ N8N_SECRET = os.getenv('N8N_SECRET')
 BUCKET_NAME = 'estimates'
 LOGO_URL = 'https://eris.co.ke/eris-engineering-logo.svg'
 
+# Template Directory
+TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
+
+# Initialize Jinja2 Environment
+jinja_env = Environment(
+    loader=FileSystemLoader(TEMPLATE_DIR),
+    autoescape=select_autoescape(['html', 'xml'])
+)
+
 # =============================================================================
-# 2. PDF GENERATION (xhtml2pdf)
+# 2. PDF GENERATION (WeasyPrint + Jinja2 - Primary)
+# =============================================================================
+
+def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[Dict[str, str]]) -> bytes:
+    """
+    Generates a professional PDF estimate using WeasyPrint + Jinja2.
+    
+    Args:
+        client_data: Dict with 'name', 'email', 'project'.
+        estimate_items: List of dicts with 'item', 'description', 'cost'.
+        
+    Returns:
+        bytes: The generated PDF content.
+    """
+    
+    # Calculate Total
+    total_cost = 0.0
+    processed_items = []
+    
+    for item in estimate_items:
+        cost_str = str(item.get('cost', '0')).replace(',', '').replace('KES', '').strip()
+        try:
+            cost_val = float(cost_str)
+            total_cost += cost_val
+        except ValueError:
+            cost_val = 0.0
+        
+        processed_items.append({
+            'item': item.get('item', ''),
+            'description': item.get('description', ''),
+            'cost': f"{cost_val:,.0f}"
+        })
+    
+    # Generate estimate number
+    estimate_number = datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
+    
+    # Prepare template context
+    context = {
+        'client_name': client_data.get('name', 'Valued Client'),
+        'client_email': client_data.get('email', 'N/A'),
+        'project_title': client_data.get('project', 'Residential Construction'),
+        'estimate_number': estimate_number,
+        'issue_date': datetime.now().strftime("%B %d, %Y"),
+        'current_year': datetime.now().year,
+        'items': processed_items,
+        'total_cost': f"{total_cost:,.0f}",
+        'cost_per_sqm': None,  # Can be calculated if square meters provided
+    }
+    
+    # Load and render template
+    try:
+        template = jinja_env.get_template('estimate_template.html')
+        html_content = template.render(**context)
+    except Exception as e:
+        print(f"❌ Template Error: {e}")
+        # Fallback to legacy method
+        return generate_simple_pdf(client_data, estimate_items)
+    
+    # Generate PDF with WeasyPrint
+    if WEASYPRINT_AVAILABLE:
+        try:
+            print("📄 Generating PDF with WeasyPrint...")
+            html = HTML(string=html_content, base_url=TEMPLATE_DIR)
+            pdf_bytes = html.write_pdf()
+            print("✅ Professional PDF generated successfully!")
+            return pdf_bytes
+        except Exception as e:
+            print(f"⚠️ WeasyPrint Error: {e}. Falling back to xhtml2pdf.")
+            return generate_simple_pdf(client_data, estimate_items)
+    else:
+        print("⚠️ WeasyPrint not installed. Using xhtml2pdf fallback.")
+        return generate_simple_pdf(client_data, estimate_items)
+
+# =============================================================================
+# 3. PDF GENERATION (xhtml2pdf - Fallback)
 # =============================================================================
 
 def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[str, str]]) -> bytes:
     """
     Generates a PDF estimate using xhtml2pdf (CSS 2.1 compliant).
+    This is the fallback method when WeasyPrint is not available.
     
     Args:
         client_data: Dict with 'name', 'email', 'project'.
@@ -322,30 +417,42 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
         return False
 
 # =============================================================================
-# 4. MAIN EXECUTION (TEST)
+# 5. MAIN EXECUTION (TEST)
 # =============================================================================
 
 if __name__ == "__main__":
-    print("🧪 Running Estimate Delivery Test (xhtml2pdf)...")
+    print("🧪 Running Estimate Delivery Test...")
+    print(f"   WeasyPrint Available: {WEASYPRINT_AVAILABLE}")
     
     # Dummy Data
     client = {
         "name": "Jane Doe",
         "email": "jane.test@example.com",
-        "project": "3BR Bungalow in Mombasa"
+        "project": "3BR Bungalow in Mombasa (Premium)"
     }
     
     items = [
-        {"item": "Preliminaries", "description": "Site clearance and setup", "cost": "50000"},
-        {"item": "Substructure", "description": "Foundation works", "cost": "250000"},
-        {"item": "Superstructure", "description": "Walling and columns", "cost": "300000"},
-        {"item": "Roofing", "description": "Timber truss and sheets", "cost": "180000"}
+        {"item": "Foundation", "description": "Excavation, reinforced concrete footing, slab", "cost": "600000"},
+        {"item": "Walling", "description": "Stone masonry, mortar, plaster", "cost": "900000"},
+        {"item": "Roofing", "description": "Timber truss, iron sheets/tiles", "cost": "700000"},
+        {"item": "Electrical", "description": "Wiring, fittings, labor", "cost": "400000"},
+        {"item": "Plumbing", "description": "Piping, sanitary ware, labor", "cost": "350000"},
+        {"item": "Finishing", "description": "Tiles, paint, ceiling, cabinets", "cost": "1500000"},
+        {"item": "Labor", "description": "Skilled and unskilled labor", "cost": "900000"},
+        {"item": "Contingency", "description": "10% buffer for unforeseen costs", "cost": "535000"}
     ]
 
-    # Run
-    pdf_content = generate_simple_pdf(client, items)
+    # Test Professional PDF (WeasyPrint)
+    print("\n📄 Testing Professional PDF Generation...")
+    pdf_content = generate_professional_pdf(client, items)
     
     if pdf_content:
-        handle_estimate_workflow(client["email"], client["name"], pdf_content)
+        # Save locally for preview
+        with open("test_estimate.pdf", "wb") as f:
+            f.write(pdf_content)
+        print(f"✅ PDF saved to test_estimate.pdf ({len(pdf_content)} bytes)")
+        
+        # Optionally run workflow
+        # handle_estimate_workflow(client["email"], client["name"], pdf_content)
     else:
         print("❌ Failed to generate PDF.")
