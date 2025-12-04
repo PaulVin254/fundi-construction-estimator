@@ -7,15 +7,25 @@ from typing import List, Dict, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# PDF Generation Libraries
+# === CONDITIONAL WEASYPRINT IMPORT ===
+# WeasyPrint requires GTK libraries (Linux only)
+# Falls back to xhtml2pdf on Windows
 try:
     from weasyprint import HTML, CSS
     WEASYPRINT_AVAILABLE = True
-except ImportError:
+    print("✅ WeasyPrint loaded successfully")
+except (ImportError, OSError) as e:
     WEASYPRINT_AVAILABLE = False
-    print("⚠️ WeasyPrint not available. Falling back to xhtml2pdf.")
+    print(f"⚠️ WeasyPrint not available ({e}). Using xhtml2pdf fallback.")
 
-from xhtml2pdf import pisa
+# xhtml2pdf fallback (always available)
+try:
+    from xhtml2pdf import pisa
+    XHTML2PDF_AVAILABLE = True
+except ImportError:
+    XHTML2PDF_AVAILABLE = False
+# =====================================
+
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 # Load environment variables
