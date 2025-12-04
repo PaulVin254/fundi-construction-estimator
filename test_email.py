@@ -7,6 +7,18 @@ Change TEST_MODE at the bottom to switch between:
   2 = Full workflow (PDF + upload + webhook)
   3 = Webhook only (test n8n connection)
 """
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
+
+# Debug: Print env vars immediately
+print("=" * 50)
+print("🔧 ENVIRONMENT CHECK")
+print("=" * 50)
+print(f"N8N_SECRET from env: '{os.getenv('N8N_SECRET', 'NOT FOUND')}'")
+print(f"N8N_WEBHOOK_URL from env: '{os.getenv('N8N_WEBHOOK_URL', 'NOT FOUND')}'")
+print("=" * 50)
 
 from estimate_delivery import generate_professional_pdf, handle_estimate_workflow
 
@@ -80,30 +92,29 @@ def test_webhook_only():
     print("=" * 50)
     
     import requests
-    import os
-    from dotenv import load_dotenv
-    
-    load_dotenv()
     
     N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", "https://n8n.sitesync.tech/webhook/send-estimate")
-    N8N_SECRET = os.getenv("N8N_SECRET", "")
-    
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": N8N_SECRET
-    }
+    N8N_SECRET_VALUE = os.getenv("N8N_SECRET", "")
     
     payload = {
         "email": TEST_EMAIL,
         "name": TEST_NAME,
-        "pdf_url": "https://example.com/test.pdf",  # Dummy URL
+        "pdf_url": "https://example.com/test.pdf",
         "subject": "TEST: Your Construction Estimate",
         "project_title": "Test Project"
     }
     
+    # Use x-n8n-secret (no underscores - Nginx drops those headers)
+    headers = {
+        "Content-Type": "application/json",
+        "x-n8n-secret": N8N_SECRET_VALUE
+    }
+    
     print(f"🔗 Webhook URL: {N8N_WEBHOOK_URL}")
-    print(f"🔑 API Key: {N8N_SECRET[:20]}..." if N8N_SECRET else "🔑 API Key: NOT SET!")
+    print(f"🔑 Header Name: 'x-n8n-secret'")
+    print(f"🔑 Header Value: '{N8N_SECRET_VALUE}'")
     print(f"📦 Payload: {payload}")
+    print(f"📤 Full Headers: {headers}")
     
     try:
         response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=30)
@@ -125,7 +136,7 @@ if __name__ == "__main__":
     
     # Choose what to test:
     # 1 = PDF only, 2 = Full workflow, 3 = Webhook only
-    TEST_MODE = 2  # <-- CHANGE THIS NUMBER TO SWITCH TESTS
+    TEST_MODE = 2  # <-- Testing full workflow
     
     if TEST_MODE == 1:
         test_pdf_only()
