@@ -69,26 +69,32 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
         except ValueError:
             cost_val = 0.0
         
+        # Use 'item' as description if 'description' not provided
+        description = item.get('description', '') or item.get('item', 'Item')
+        
         processed_items.append({
-            'item': item.get('item', ''),
-            'description': item.get('description', ''),
-            'cost': f"{cost_val:,.0f}"
+            'description': description,
+            'cost': cost_val  # Keep as number for template formatting
         })
     
-    # Generate estimate number
-    estimate_number = datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
+    # Generate estimate reference
+    estimate_reference = "ERIS-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
     
-    # Prepare template context
+    # Calculate cost per sqm (default estimate: ~KES 45,000/sqm for standard construction)
+    estimated_sqm = total_cost / 45000 if total_cost > 0 else 0
+    cost_per_sqm = total_cost / estimated_sqm if estimated_sqm > 0 else 45000
+    
+    # Prepare template context (Money Bill Style)
     context = {
         'client_name': client_data.get('name', 'Valued Client'),
         'client_email': client_data.get('email', 'N/A'),
         'project_title': client_data.get('project', 'Residential Construction'),
-        'estimate_number': estimate_number,
-        'issue_date': datetime.now().strftime("%B %d, %Y"),
+        'estimate_reference': estimate_reference,
+        'generation_date': datetime.now().strftime("%B %d, %Y"),
         'current_year': datetime.now().year,
         'items': processed_items,
-        'total_cost': f"{total_cost:,.0f}",
-        'cost_per_sqm': None,  # Can be calculated if square meters provided
+        'total_cost': total_cost,  # Keep as number for template formatting
+        'cost_per_sqm': cost_per_sqm,  # Keep as number for template formatting
     }
     
     # Load and render template
