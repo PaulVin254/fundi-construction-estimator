@@ -90,7 +90,7 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
 
         headers = {
             "Content-Type": "application/json",
-            "x-n8n-header-auth": N8N_SECRET if N8N_SECRET else ""
+            "api-key": N8N_SECRET if N8N_SECRET else ""
         }
 
         print(f"🔗 Triggering webhook at {N8N_WEBHOOK_URL}...")
