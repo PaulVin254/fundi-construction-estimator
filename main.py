@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ValidationError
 from dotenv import load_dotenv
 
 # Import ADK components
@@ -34,7 +34,7 @@ from estimate_delivery import generate_professional_pdf, generate_simple_pdf, ha
 # Import the agent
 # Ensure the agents directory is in the python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from agents.website_builder_simple.agent import root_agent
+from agents.fundi_estimator.agent import root_agent
 
 # Load environment variables
 load_dotenv()
@@ -73,6 +73,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS Configuration
 origins = [
     "http://localhost:3000",
+    "http://localhost:8080",
     "http://localhost:5173",
     "https://eris.co.ke",
     "https://www.eris.co.ke",
@@ -485,9 +486,21 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                 if match:
                     json_str = match.group(1).strip()
                     print(f"   Extracted JSON length: {len(json_str)} chars")
-                    estimate_data = json.loads(json_str)
-                    show_estimate_button = True
-                    print(f"   ✅ JSON parsed successfully. show_estimate_button = {show_estimate_button}")
+                    raw_data = json.loads(json_str)
+                    
+                    try:
+                        # Validate the raw parsed JSON against our Pydantic schema
+                        validated_model = EstimateData(**raw_data)
+                        estimate_data = validated_model.model_dump()
+                        show_estimate_button = True
+                        print(f"   ✅ JSON parsed AND validated successfully. show_estimate_button = {show_estimate_button}")
+                    except ValidationError as ve:
+                        print(f"❌ Pydantic Validation Error on structured response: {ve}")
+                        # Reject malformed content with a safe 422 Unprocessable Entity
+                        raise HTTPException(
+                            status_code=422, 
+                            detail="The agent generated an invalid estimate format. Please try again."
+                        )
                     
                     # 2. Clean the response (Remove XML block)
                     original_length = len(fundi_response)

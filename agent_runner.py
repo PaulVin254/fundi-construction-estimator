@@ -15,7 +15,7 @@ load_dotenv()
 
 # --- B. IMPORTING OUR AGENT ---
 # We are importing the "brain" of our AI agent from our project.
-from agents.website_builder_simple.agent import root_agent
+from agents.fundi_estimator.agent import root_agent
 
 # --- C. IMPORTING ADK (AGENT DEVELOPMENT KIT) COMPONENTS ---
 # These are special tools from the ADK to run our agent programmatically.
@@ -131,7 +131,7 @@ async def chat_loop():
             # This helps us see the agent's thought process step-by-step.
             print_json_response(event, f"============Event #{i}=============")
 
-            if hasattr(event, "author") and event.author == "code_writer_agent":
+            if hasattr(event, "author") and event.author == "construction_cost_estimator":
 
                 if event.is_final_response():
                     # If the event is a final response, we extract the text.

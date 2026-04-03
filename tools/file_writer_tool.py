@@ -8,75 +8,25 @@
 import os
 import sys
 import json
-import smtplib
 from datetime import datetime
 from pathlib import Path
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
-from xhtml2pdf import pisa  # Library for HTML to PDF conversion
 
 # Add parent directory to path to import retry utilities
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.retry_config import with_retry, FILE_RETRY_CONFIG, get_user_friendly_error
 
-def convert_html_to_pdf(source_html: str, output_filename: str) -> bool:
-    """Utility function to convert HTML string to PDF file."""
-    try:
-        with open(output_filename, "w+b") as result_file:
-            pisa_status = pisa.CreatePDF(source_html, dest=result_file)
-        return not pisa_status.err
-    except Exception as e:
-        print(f"Error converting PDF: {e}")
-        return False
-
-def send_email_with_attachment(recipient_email: str, pdf_path: str, project_name: str):
-    """Sends the PDF report via email."""
-    smtp_server = os.getenv("SMTP_SERVER")
-    smtp_port = os.getenv("SMTP_PORT")
-    sender_email = os.getenv("SMTP_EMAIL")
-    sender_password = os.getenv("SMTP_PASSWORD")
-
-    if not all([smtp_server, smtp_port, sender_email, sender_password]):
-        print("⚠️ Email credentials not set in .env. Skipping email.")
-        return False, "Email credentials missing in .env"
-
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient_email
-        msg['Subject'] = f"Fundi Estimate: {project_name}"
-
-        body = f"Hello,\n\nPlease find attached your construction cost estimate for the {project_name}.\n\nBest regards,\nFundi"
-        msg.attach(MIMEText(body, 'plain'))
-
-        with open(pdf_path, "rb") as f:
-            attach = MIMEApplication(f.read(), _subtype="pdf")
-            attach.add_header('Content-Disposition', 'attachment', filename=os.path.basename(pdf_path))
-            msg.attach(attach)
-
-        with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
-            server.starttls()
-            server.login(sender_email, sender_password)
-            server.send_message(msg)
-        
-        return True, "Success"
-    except Exception as e:
-        print(f"❌ Failed to send email: {e}")
-        return False, str(e)
-
 # -----------------------------------------------------------------------------
 # TOOL FUNCTION: write_estimate_report
 # -----------------------------------------------------------------------------
 @with_retry(FILE_RETRY_CONFIG)
-def write_estimate_report(html_content: str, estimate_data: dict = None, user_email: str = None) -> dict:
+def write_estimate_report(html_content: str, estimate_data_json: str = None, user_email: str = None) -> dict:
     """
-    Saves the estimate as a PDF and optionally emails it to the user.
+    Saves the estimate locally for debugging and records.
     
     Args:
         html_content: The full HTML string of the report.
-        estimate_data: Dictionary containing raw estimate numbers (optional).
-        user_email: The email address to send the PDF to (optional).
+        estimate_data_json: JSON string containing raw estimate numbers (optional).
+        user_email: The email address to send the PDF to (optional - unused here now, handled by estimate_handler).
     """
     try:
         # Ensure output directory exists
@@ -89,7 +39,6 @@ def write_estimate_report(html_content: str, estimate_data: dict = None, user_em
         # Define filenames
         base_name = f"{timestamp}_construction_estimate"
         html_filename = output_dir / f"{base_name}.html"
-        pdf_filename = output_dir / f"{base_name}.pdf"
         json_filename = output_dir / f"{base_name}.json"
 
         # 1. Save HTML (as backup/source)
@@ -97,35 +46,24 @@ def write_estimate_report(html_content: str, estimate_data: dict = None, user_em
             f.write(html_content)
 
         # 2. Save JSON Data (if provided)
-        if estimate_data:
-            with open(json_filename, "w", encoding="utf-8") as f:
-                json.dump(estimate_data, f, indent=2)
-
-        # 3. Convert to PDF
-        pdf_success = convert_html_to_pdf(html_content, str(pdf_filename))
-        
-        result_message = f"Report generated: {pdf_filename}"
-        email_status = "Not sent (no email provided)"
-
-        # 4. Send Email (if email provided and PDF success)
-        if pdf_success and user_email:
-            sent, error_msg = send_email_with_attachment(user_email, str(pdf_filename), "Residential Project")
-            if sent:
-                email_status = f"Sent to {user_email}"
-                result_message += f" and emailed to {user_email}"
-            else:
-                email_status = f"Failed to send ({error_msg})"
-                result_message += f" (Email failed: {error_msg})"
+        if estimate_data_json:
+            try:
+                estimate_data = json.loads(estimate_data_json)
+                with open(json_filename, "w", encoding="utf-8") as f:
+                    json.dump(estimate_data, f, indent=2)
+            except json.JSONDecodeError:
+                # Fallback if invalid JSON
+                with open(json_filename, "w", encoding="utf-8") as f:
+                    f.write(estimate_data_json)
 
         return {
             "success": True,
             "files": {
                 "html": str(html_filename),
-                "pdf": str(pdf_filename) if pdf_success else None,
-                "json": str(json_filename) if estimate_data else None
+                "json": str(json_filename) if estimate_data_json else None
             },
-            "email_status": email_status,
-            "message": result_message
+            "email_status": "Handled by estimate delivery workflow",
+            "message": f"Report generated: {html_filename}"
         }
 
     except Exception as e:
@@ -146,6 +84,6 @@ def write_to_file(content: str) -> dict:
     """
     result = write_estimate_report(content)
     return {
-        "status": result["status"],
-        "file": result["html_file"]
+        "status": result["success"],
+        "file": result["files"]["html"]
     }

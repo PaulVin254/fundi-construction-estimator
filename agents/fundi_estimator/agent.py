@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 from google.adk.agents import LlmAgent
 
 # Import the custom tool that handles writing estimate reports to timestamped files.
-from tools.file_writer_tool import write_to_file
+from tools.file_writer_tool import write_to_file, write_estimate_report
 
 # Import a utility function that reads instruction and description files from disk.
 from utils.file_loader import load_instructions_file
@@ -25,17 +25,17 @@ from utils.file_loader import load_instructions_file
 root_agent = LlmAgent(
     name="construction_cost_estimator",  # Unique name for the agent; also shown in the UI.
 
-    model="gemini-2.0-flash-001",   # The ID of the Gemini model used to generate responses.
+    model="gemini-2.5-flash",   # The ID of the Gemini model used to generate responses.
 
     # The prompt/instruction that tells the agent what kind of behavior to exhibit.
     # It is loaded from a file
-    instruction=load_instructions_file("agents/website_builder_simple/instructions.txt"),
+    instruction=load_instructions_file("agents/fundi_estimator/instructions.txt"),
 
     # A short summary of what the agent does.
     # It is loaded from a file
-    description=load_instructions_file("agents/website_builder_simple/description.txt"),
+    description=load_instructions_file("agents/fundi_estimator/description.txt"),
 
-    # A list of tools the agent can invoke during execution.
-    # In this case, just one: a function that writes the generated estimate report to a file.
-    tools=[write_to_file],
+    # No tools for basic chat to prevent strict schema failures.
+    # The report generation logic will be handled outside the chat loop or via a dedicated path.
+    tools=[],
 )

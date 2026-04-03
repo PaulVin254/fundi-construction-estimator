@@ -3,561 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Construction Cost Audit - {{ project_title }}</title>
+    <title>Estimate - {{ project_title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: '#3ecf8e', /* Supabase Green */
+                        brandDark: '#24b47e',
+                        foreground: '#111827',
+                        muted: '#6b7280',
+                        border: '#f3f4f6',
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        /* ============================================
-           MONEY BILL AGGRESSIVE ESTIMATE TEMPLATE
-           ERIS Engineering - 2025
-           ============================================ */
-        
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            color: #111827;
+            background-color: #ffffff;
+            -webkit-font-smoothing: antialiased;
         }
         
         @page {
             size: A4;
-            margin: 0;
+            margin: 10mm;
         }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            font-size: 11pt;
-            line-height: 1.5;
-            color: #1e293b;
-            background: #ffffff;
-            position: relative;
-            min-height: 100vh;
-        }
-        
-        /* ============================================
-           DIAGONAL WATERMARK
-           ============================================ */
-        .watermark {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-45deg);
-            font-size: 8rem;
-            font-weight: 900;
-            color: rgba(15, 23, 42, 0.08);
-            letter-spacing: 0.5rem;
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 0;
-            user-select: none;
-        }
-        
-        /* ============================================
-           NAVY HEADER
-           ============================================ */
-        .header {
-            background: #0f172a;
-            color: #ffffff;
-            padding: 2rem 2.5rem;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .header-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 1.5rem;
-        }
-        
-        .logo-section {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .logo {
-            height: 48px;
-            width: auto;
-        }
-        
-        .company-info {
-            text-align: right;
-            font-size: 0.75rem;
-            color: #94a3b8;
-            line-height: 1.6;
-        }
-        
-        .company-info a {
-            color: #60a5fa;
-            text-decoration: none;
-        }
-        
-        .header-title {
-            border-top: 1px solid #334155;
-            padding-top: 1.5rem;
-        }
-        
-        .document-type {
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: #f59e0b;
-            margin-bottom: 0.5rem;
-        }
-        
-        .main-title {
-            font-size: 2rem;
-            font-weight: 900;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-        }
-        
-        .confidential-badge {
-            display: inline-block;
-            background: #dc2626;
-            color: #ffffff;
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            padding: 0.35rem 0.75rem;
-            border-radius: 2px;
-        }
-        
-        /* ============================================
-           PROJECT INFO SECTION
-           ============================================ */
-        .project-section {
-            background: #f8fafc;
-            padding: 1.5rem 2.5rem;
-            border-bottom: 3px solid #0f172a;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .project-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2rem;
-        }
-        
-        .info-block {
-            
-        }
-        
-        .info-label {
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            color: #64748b;
-            margin-bottom: 0.25rem;
-        }
-        
-        .info-value {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #0f172a;
-        }
-        
-        .info-value.highlight {
-            font-size: 1.25rem;
-            font-weight: 800;
-            color: #0f172a;
-        }
-        
-        /* ============================================
-           COST BREAKDOWN TABLE
-           ============================================ */
-        .content-section {
-            padding: 2rem 2.5rem;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 2px solid #0f172a;
-        }
-        
-        .section-title {
-            font-size: 0.8rem;
-            font-weight: 800;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: #0f172a;
-        }
-        
-        .section-badge {
-            font-size: 0.6rem;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: #64748b;
-            background: #e2e8f0;
-            padding: 0.25rem 0.5rem;
-            border-radius: 2px;
-        }
-        
-        .cost-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 1.5rem;
-        }
-        
-        .cost-table thead th {
-            background: #0f172a;
-            color: #ffffff;
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            padding: 0.75rem 1rem;
-            text-align: left;
-        }
-        
-        .cost-table thead th:last-child {
-            text-align: right;
-        }
-        
-        .cost-table tbody tr:nth-child(odd) {
-            background: #f8fafc;
-        }
-        
-        .cost-table tbody tr:nth-child(even) {
-            background: #ffffff;
-        }
-        
-        .cost-table tbody tr:hover {
-            background: #f1f5f9;
-        }
-        
-        .cost-table tbody td {
-            padding: 0.875rem 1rem;
-            font-size: 0.9rem;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        
-        .cost-table tbody td:first-child {
-            font-weight: 600;
-            color: #1e293b;
-        }
-        
-        .cost-table tbody td:last-child {
-            text-align: right;
-            font-family: 'SF Mono', 'Consolas', monospace;
-            font-weight: 600;
-            color: #0f172a;
-        }
-        
-        /* Total Row */
-        .cost-table tfoot tr {
-            background: #0f172a !important;
-        }
-        
-        .cost-table tfoot td {
-            padding: 1rem;
-            font-size: 1rem;
-            font-weight: 800;
-            color: #ffffff;
-            border: none;
-        }
-        
-        .cost-table tfoot td:last-child {
-            text-align: right;
-            font-family: 'SF Mono', 'Consolas', monospace;
-            font-size: 1.25rem;
-            color: #f59e0b;
-        }
-        
-        /* ============================================
-           METRICS CALLOUT BOX
-           ============================================ */
-        .metrics-box {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-            border: 2px solid #f59e0b;
-            border-radius: 4px;
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 1.5rem;
-            text-align: center;
-        }
-        
-        .metric-item {
-            
-        }
-        
-        .metric-value {
-            font-size: 1.5rem;
-            font-weight: 900;
-            color: #92400e;
-            font-family: 'SF Mono', 'Consolas', monospace;
-        }
-        
-        .metric-label {
-            font-size: 0.6rem;
-            font-weight: 700;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            color: #92400e;
-            margin-top: 0.25rem;
-        }
-        
-        /* ============================================
-           RED CTA FOOTER
-           ============================================ */
-        .cta-footer {
-            background: #dc2626;
-            color: #ffffff;
-            padding: 2rem 2.5rem;
-            position: relative;
-            z-index: 1;
-            margin-top: auto;
-        }
-        
-        .cta-headline {
-            font-size: 1.5rem;
-            font-weight: 900;
-            letter-spacing: -0.01em;
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
-        }
-        
-        .cta-subtext {
-            font-size: 0.95rem;
-            font-weight: 500;
-            line-height: 1.6;
-            margin-bottom: 1.25rem;
-            max-width: 600px;
-        }
-        
-        .cta-contact {
-            display: flex;
-            gap: 2rem;
-            flex-wrap: wrap;
-        }
-        
-        .cta-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .cta-icon {
-            width: 20px;
-            height: 20px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-        }
-        
-        .cta-link {
-            color: #ffffff;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 0.9rem;
-        }
-        
-        .cta-link:hover {
-            text-decoration: underline;
-        }
-        
-        /* ============================================
-           LEGAL FOOTER
-           ============================================ */
-        .legal-footer {
-            background: #0f172a;
-            color: #64748b;
-            padding: 1rem 2.5rem;
-            font-size: 0.6rem;
-            line-height: 1.6;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .legal-text {
-            max-width: 800px;
-        }
-        
-        .legal-footer strong {
-            color: #94a3b8;
-        }
-        
-        /* ============================================
-           PRINT OPTIMIZATIONS
-           ============================================ */
+
         @media print {
             body {
+                background-color: #ffffff;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
-            
-            .watermark {
-                position: absolute;
+            .no-print {
+                display: none !important;
             }
-            
-            .header, .project-section, .content-section, 
-            .cta-footer, .legal-footer {
+            .page-break-inside-avoid {
                 break-inside: avoid;
             }
         }
-        
-        /* ============================================
-           PAGE LAYOUT WRAPPER
-           ============================================ */
-        .page-wrapper {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
+
+        /* Subtle horizontal dividers for table */
+        .minimal-table th {
+            border-bottom: 1px solid #f3f4f6;
         }
-        
-        .content-section {
-            flex: 1;
+        .minimal-table td {
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .minimal-table tr:last-child td {
+            border-bottom: none;
         }
     </style>
 </head>
-<body>
-    <!-- Diagonal Watermark -->
-    <div class="watermark">ESTIMATE</div>
-    
-    <div class="page-wrapper">
-        <!-- Navy Header -->
-        <header class="header">
-            <div class="header-top">
-                <div class="logo-section">
-                    <img src="https://eris.co.ke/eris-engineering-logo.svg" alt="Eris Engineering" class="logo" onerror="this.style.display='none'">
+<body class="max-w-4xl mx-auto p-8 md:p-12 text-foreground bg-white min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="flex justify-between items-start mb-16">
+        <div>
+            <!-- Minimal Logo/Branding -->
+            <div class="flex items-center gap-2 mb-2">
+                <div class="w-6 h-6 rounded-sm bg-brand flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 </div>
-                <div class="company-info">
-                    Eris Engineering Ltd<br>
-                    Nairobi, Kenya<br>
-                    <a href="https://eris.co.ke">eris.co.ke</a> | <a href="mailto:paul@eris.co.ke">paul@eris.co.ke</a>
-                </div>
+                <span class="font-semibold text-lg tracking-tight">Eris Engineering</span>
             </div>
-            <div class="header-title">
-                <div class="document-type">Official Construction Estimate</div>
-                <h1 class="main-title">Construction Cost Audit</h1>
-                <span class="confidential-badge">Confidential: 2025 Market Rates</span>
-            </div>
-        </header>
-        
-        <!-- Project Info Section -->
-        <section class="project-section">
-            <div class="project-grid">
-                <div class="info-block">
-                    <div class="info-label">Prepared For</div>
-                    <div class="info-value highlight">{{ client_name }}</div>
-                </div>
-                <div class="info-block">
-                    <div class="info-label">Project</div>
-                    <div class="info-value highlight">{{ project_title }}</div>
-                </div>
-                <div class="info-block">
-                    <div class="info-label">Date Generated</div>
-                    <div class="info-value">{{ generation_date }}</div>
-                </div>
-                <div class="info-block">
-                    <div class="info-label">Estimate Reference</div>
-                    <div class="info-value">{{ estimate_reference }}</div>
-                </div>
-            </div>
-        </section>
-        
-        <!-- Cost Breakdown Section -->
-        <section class="content-section">
-            <div class="section-header">
-                <span class="section-title">Detailed Cost Breakdown</span>
-                <span class="section-badge">{{ items|length }} Line Items</span>
-            </div>
-            
-            <table class="cost-table">
-                <thead>
-                    <tr>
-                        <th style="width: 60%">Description</th>
-                        <th style="width: 40%">Estimated Cost (KES)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in items %}
-                    <tr>
-                        <td>{{ item.description }}</td>
-                        <td>{{ "{:,.0f}".format(item.cost) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td>TOTAL ESTIMATED COST</td>
-                        <td>KES {{ "{:,.0f}".format(total_cost) }}</td>
-                    </tr>
-                </tfoot>
-            </table>
-            
-            <!-- Metrics Callout -->
-            <div class="metrics-box">
-                <div class="metrics-grid">
-                    <div class="metric-item">
-                        <div class="metric-value">KES {{ "{:,.0f}".format(total_cost) }}</div>
-                        <div class="metric-label">Total Investment</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-value">{{ "{:,.0f}".format(cost_per_sqm) }}/m²</div>
-                        <div class="metric-label">Cost Per Square Meter</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-value">{{ items|length }}</div>
-                        <div class="metric-label">Budget Categories</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <!-- Red CTA Footer -->
-        <footer class="cta-footer">
-            <h2 class="cta-headline">Don't Gamble With Millions</h2>
-            <p class="cta-subtext">
-                This estimate is AI-generated using 2025 market rates. For a detailed, professionally-reviewed 
-                Bill of Quantities with accurate material specifications and labor costs, speak to Eris Engineering.
-            </p>
-            <div class="cta-contact">
-                <div class="cta-item">
-                    <span class="cta-icon">📞</span>
-                    <a href="tel:+254717297022" class="cta-link">+254 717 297 022</a>
-                </div>
-                <div class="cta-item">
-                    <span class="cta-icon">✉️</span>
-                    <a href="mailto:paul@eris.co.ke" class="cta-link">paul@eris.co.ke</a>
-                </div>
-                <div class="cta-item">
-                    <span class="cta-icon">🌐</span>
-                    <a href="https://eris.co.ke" class="cta-link">eris.co.ke</a>
-                </div>
-            </div>
-        </footer>
-        
-        <!-- Legal Footer -->
-        <div class="legal-footer">
-            <p class="legal-text">
-                <strong>DISCLAIMER:</strong> This estimate is provided for preliminary budgeting purposes only 
-                and does not constitute a formal quotation or contract. Actual costs may vary based on site conditions, 
-                material availability, design changes, and market fluctuations. Eris Engineering Ltd accepts no liability 
-                for decisions made based on this estimate. For binding quotations, engage a registered quantity surveyor 
-                or construction professional. © {{ current_year }} Eris Engineering Ltd. All rights reserved.
+            <p class="text-muted text-sm leading-relaxed">
+                Nairobi, Kenya<br>
+                <a href="https://eris.co.ke" class="hover:text-foreground transition-colors">eris.co.ke</a> | <a href="mailto:paul@eris.co.ke" class="hover:text-foreground transition-colors">paul@eris.co.ke</a>
             </p>
         </div>
-    </div>
+        <div class="text-right">
+            <h1 class="text-2xl font-semibold tracking-tight uppercase text-muted mb-1">Estimate</h1>
+            <p class="text-sm font-medium text-foreground">{{ estimate_reference }}</p>
+        </div>
+    </header>
+
+    <!-- Project Details -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-16 page-break-inside-avoid">
+        <div>
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Prepared For</h3>
+            <p class="text-sm text-foreground">{{ client_name }}</p>
+        </div>
+        <div>
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Project</h3>
+            <p class="text-sm text-foreground">{{ project_title }}</p>
+        </div>
+        <div>
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Date</h3>
+            <p class="text-sm text-foreground">{{ generation_date }}</p>
+        </div>
+        <div>
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Total Amount</h3>
+            <p class="text-sm font-semibold text-brandDark">KES {{ "{:,.0f}".format(total_cost) }}</p>
+        </div>
+    </section>
+
+    <!-- Table Section -->
+    <section class="mb-16 flex-grow">
+        <h2 class="text-lg font-semibold mb-6">Cost Breakdown</h2>
+        <table class="w-full text-sm minimal-table text-left border-collapse">
+            <thead>
+                <tr>
+                    <th class="py-4 font-semibold text-muted w-3/4">Description</th>
+                    <th class="py-4 font-semibold text-muted w-1/4 text-right">Amount (KES)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr class="group hover:bg-gray-50/50 transition-colors">
+                    <td class="py-4 pr-4">{{ item.description }}</td>
+                    <td class="py-4 text-right tabular-nums">{{ "{:,.0f}".format(item.cost) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td class="pt-6 pb-2 font-semibold">Total Estimated Cost</td>
+                    <td class="pt-6 pb-2 text-right font-semibold tabular-nums text-brandDark">KES {{ "{:,.0f}".format(total_cost) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </section>
+
+    <!-- Metrics Summary -->
+    <section class="flex flex-wrap gap-12 py-8 border-y border-border mb-16 page-break-inside-avoid">
+        <div>
+            <p class="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Cost Per Sqm</p>
+            <p class="text-lg font-semibold tabular-nums">{{ "{:,.0f}".format(cost_per_sqm) }}/m²</p>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Line Items</p>
+            <p class="text-lg font-semibold tabular-nums">{{ items|length }}</p>
+        </div>
+    </section>
+
+    <!-- Footer / CTA -->
+    <footer class="mt-auto page-break-inside-avoid text-sm">
+        <div class="mb-12 max-w-2xl">
+            <h3 class="font-semibold mb-2">Professional Review</h3>
+            <p class="text-muted leading-relaxed mb-4">
+                This estimate is AI-generated using 2025 market rates. For a detailed, professionally-reviewed Bill of Quantities with accurate material specifications and labor costs, please contact us.
+            </p>
+            <div class="flex items-center gap-6 text-muted">
+                <a href="tel:+254717297022" class="hover:text-foreground transition-colors">+254 717 297 022</a>
+                <a href="mailto:paul@eris.co.ke" class="hover:text-foreground transition-colors">paul@eris.co.ke</a>
+            </div>
+        </div>
+
+        <div class="pt-8 border-t border-border">
+            <p class="text-xs text-muted leading-relaxed max-w-3xl">
+                <strong>Disclaimer:</strong> This estimate is provided for preliminary budgeting purposes only and does not constitute a formal quotation or contract. Actual costs may vary based on site conditions, material availability, design changes, and market fluctuations. Eris Engineering Ltd accepts no liability for decisions made based on this estimate. For binding quotations, engage a registered quantity surveyor or construction professional. © {{ current_year }} Eris Engineering Ltd. All rights reserved.
+            </p>
+        </div>
+    </footer>
+
 </body>
 </html>
