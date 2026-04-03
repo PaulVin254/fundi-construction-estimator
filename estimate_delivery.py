@@ -4,6 +4,7 @@ import io
 import requests
 from datetime import datetime
 from typing import List, Dict, Optional
+from urllib.parse import urlparse
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -12,10 +13,13 @@ from dotenv import load_dotenv
 # Falls back to xhtml2pdf on Windows
 try:
     from weasyprint import HTML, CSS
+    import weasyprint
     WEASYPRINT_AVAILABLE = True
+    WEASYPRINT_VERSION = getattr(weasyprint, "__version__", "unknown")
     print("✅ WeasyPrint loaded successfully")
 except (ImportError, OSError) as e:
     WEASYPRINT_AVAILABLE = False
+    WEASYPRINT_VERSION = "unavailable"
     print(f"⚠️ WeasyPrint not available ({e}). Using xhtml2pdf fallback.")
 
 # xhtml2pdf fallback (always available)
@@ -41,6 +45,7 @@ N8N_WEBHOOK_URL = "https://n8n.sitesync.tech/webhook/send-estimate"
 N8N_SECRET = os.getenv('N8N_SECRET')
 BUCKET_NAME = 'estimates'
 LOGO_URL = 'https://eris.co.ke/eris-engineering-logo.svg'
+PDF_ALLOW_LEGACY_FALLBACK = os.getenv("PDF_ALLOW_LEGACY_FALLBACK", "false").lower() == "true"
 
 # Template Directory
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
@@ -54,6 +59,21 @@ jinja_env = Environment(
 # =============================================================================
 # 2. PDF GENERATION (WeasyPrint + Jinja2 - Primary)
 # =============================================================================
+
+def _is_safe_logo_source(value: Optional[str]) -> bool:
+    """Allow only explicit http(s), data URI, or project-relative logo paths."""
+    if not value:
+        return False
+
+    if value.startswith("data:image/"):
+        return True
+
+    parsed = urlparse(value)
+    if parsed.scheme in {"http", "https"}:
+        return True
+
+    # allow relative paths like templates/assets/logo.png
+    return not parsed.scheme and not value.startswith("//")
 
 def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[Dict[str, str]]) -> bytes:
     """
@@ -93,6 +113,11 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
     # Calculate cost per sqm (default estimate: ~KES 45,000/sqm for standard construction)
     estimated_sqm = total_cost / 45000 if total_cost > 0 else 0
     cost_per_sqm = total_cost / estimated_sqm if estimated_sqm > 0 else 45000
+
+    requested_logo = os.getenv("ESTIMATE_LOGO_URL", LOGO_URL)
+    logo_src = requested_logo if _is_safe_logo_source(requested_logo) else None
+    if not logo_src:
+        print("⚠️ Invalid ESTIMATE_LOGO_URL configured. Falling back to text-only brand mark.")
     
     # Prepare template context (Money Bill Style)
     context = {
@@ -105,6 +130,7 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
         'items': processed_items,
         'total_cost': total_cost,  # Keep as number for template formatting
         'cost_per_sqm': cost_per_sqm,  # Keep as number for template formatting
+        'logo_src': logo_src,
     }
     
     # Load and render template
@@ -119,17 +145,25 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
     # Generate PDF with WeasyPrint
     if WEASYPRINT_AVAILABLE:
         try:
-            print("📄 Generating PDF with WeasyPrint...")
-            html = HTML(string=html_content, base_url=TEMPLATE_DIR)
+            print(f"📄 Generating PDF with WeasyPrint v{WEASYPRINT_VERSION}...")
+            html = HTML(string=html_content, base_url=os.path.dirname(os.path.abspath(__file__)))
             pdf_bytes = html.write_pdf()
             print("✅ Professional PDF generated successfully!")
             return pdf_bytes
         except Exception as e:
-            print(f"⚠️ WeasyPrint Error: {e}. Falling back to xhtml2pdf.")
-            return generate_simple_pdf(client_data, estimate_items)
+            print(f"❌ WeasyPrint Error: {e}")
+            if PDF_ALLOW_LEGACY_FALLBACK and XHTML2PDF_AVAILABLE:
+                print("⚠️ Falling back to xhtml2pdf because PDF_ALLOW_LEGACY_FALLBACK=true")
+                return generate_simple_pdf(client_data, estimate_items)
+            raise
     else:
-        print("⚠️ WeasyPrint not installed. Using xhtml2pdf fallback.")
-        return generate_simple_pdf(client_data, estimate_items)
+        if PDF_ALLOW_LEGACY_FALLBACK and XHTML2PDF_AVAILABLE:
+            print("⚠️ WeasyPrint not installed. Using xhtml2pdf fallback.")
+            return generate_simple_pdf(client_data, estimate_items)
+        raise RuntimeError(
+            "WeasyPrint renderer is unavailable and legacy fallback is disabled. "
+            "Install WeasyPrint system dependencies or set PDF_ALLOW_LEGACY_FALLBACK=true."
+        )
 
 # =============================================================================
 # 3. PDF GENERATION (xhtml2pdf - Fallback)
