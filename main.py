@@ -95,12 +95,14 @@ app.add_middleware(
 
 class ConstructionQuery(BaseModel):
     user_input: str
+    session_id: str
     email: Optional[str] = None
     name: Optional[str] = None
     phone: Optional[str] = None
 
 class EstimateData(BaseModel):
     client_name: Optional[str] = None
+    client_email: Optional[str] = None
     project_title: str
     items: List[Dict]
     total_cost: Optional[str] = None
@@ -116,6 +118,10 @@ class EstimateGenerationRequest(BaseModel):
     @property
     def final_name(self):
         return self.name or self.client_name or self.estimate_data.client_name or "Valued Client"
+
+    @property
+    def final_email(self):
+        return self.email or self.estimate_data.client_email
 
 class SessionStatsResponse(BaseModel):
     session_id: str
@@ -229,7 +235,7 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
         print(f"📄 Manual PDF Generation requested...")
         
         # Resolve Name and Email from Session if missing
-        final_email = payload.email
+        final_email = payload.final_email
         final_name = payload.final_name
         
         # If email is missing or invalid, try to fetch from session
@@ -308,7 +314,7 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
     """
     try:
         # Use email as session_id if provided, else default to a generic one
-        session_id = query.email if query.email else "anonymous_user"
+        session_id = query.session_id
         user_id = session_id  # Use same ID for user and session for simplicity
         
         # Check if session exists, if not create it
@@ -473,6 +479,12 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         # === ESTIMATE DATA DETECTION (CLIENT-SIDE TRIGGER) ===
         estimate_data = None
         show_estimate_button = False
+        request_lead_info = False
+
+        if "<REQUEST_LEAD_INFO>" in fundi_response:
+            print("👤 Lead info requested by AI...")
+            request_lead_info = True
+            fundi_response = fundi_response.replace("<REQUEST_LEAD_INFO>", "").strip()
         
         print(f"🔍 Checking for ESTIMATE_DATA in response...")
         print(f"   Response length: {len(fundi_response)} chars")
@@ -494,6 +506,28 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                         estimate_data = validated_model.model_dump()
                         show_estimate_button = True
                         print(f"   ✅ JSON parsed AND validated successfully. show_estimate_button = {show_estimate_button}")
+                        
+                        # Fix: Make sure session has recent captured client info
+                        extracted_name = validated_model.client_name
+                        extracted_email = validated_model.client_email
+                        
+                        if extracted_name or extracted_email:
+                            print(f"   💾 Found user details in payload: name={extracted_name}, email={extracted_email}")
+                            
+                            if updated_session.state is None:
+                                updated_session.state = {}
+                            if extracted_name:
+                                updated_session.state["user_name"] = extracted_name
+                            if extracted_email:
+                                updated_session.state["user_email"] = extracted_email
+                            
+                            # Use update_session kwargs instead of setting attributes directly
+                            await session_service.update_session(
+                                updated_session, 
+                                user_name=extracted_name or getattr(updated_session, 'user_name', None),
+                                user_email=extracted_email or getattr(updated_session, 'user_email', None)
+                            )
+
                     except ValidationError as ve:
                         print(f"❌ Pydantic Validation Error on structured response: {ve}")
                         # Reject malformed content with a safe 422 Unprocessable Entity
@@ -545,6 +579,7 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
             "fundi_response": fundi_response,
             "estimate_data": estimate_data,
             "show_estimate_button": show_estimate_button,
+            "request_lead_info": request_lead_info,
             "html_report": html_report,
             "session_info": {
                 "session_id": session_id,

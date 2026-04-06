@@ -45,7 +45,7 @@ N8N_WEBHOOK_URL = "https://n8n.sitesync.tech/webhook/send-estimate"
 N8N_SECRET = os.getenv('N8N_SECRET')
 BUCKET_NAME = 'estimates'
 LOGO_URL = 'https://eris.co.ke/eris-engineering-logo.svg'
-PDF_ALLOW_LEGACY_FALLBACK = os.getenv("PDF_ALLOW_LEGACY_FALLBACK", "false").lower() == "true"
+PDF_ALLOW_LEGACY_FALLBACK = os.getenv("PDF_ALLOW_LEGACY_FALLBACK", "true").lower() == "true"
 
 # Template Directory
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
