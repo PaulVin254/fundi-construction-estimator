@@ -43,8 +43,15 @@ load_dotenv()
 # APP CONFIGURATION
 # =============================================================================
 
-# Initialize Rate Limiter
-limiter = Limiter(key_func=get_remote_address)
+def get_user_identifier(request: Request) -> str:
+    """Extract user identifier from headers, fallback to IP address."""
+    user_id = request.headers.get("x-user-id") or request.headers.get("x-session-id")
+    if user_id:
+        return user_id
+    return get_remote_address(request)
+
+# Initialize Rate Limiter with a global app-level throttle (100 total requests per minute)
+limiter = Limiter(key_func=get_user_identifier, default_limits=["100/minute"])
 
 app = FastAPI(
     title="Fundi Construction Estimator API",

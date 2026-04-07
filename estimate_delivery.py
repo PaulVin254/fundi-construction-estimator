@@ -453,7 +453,8 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
         }
 
         print(f"🔗 Calling Webhook: {N8N_WEBHOOK_URL}")
-        response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=15)
+        # Added a strict circuit-breaker timeout of 3.0s to prevent hanging worker threads
+        response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3.0)
 
         if response.status_code == 200:
             print("✅ Webhook Success! Estimate sent.")
