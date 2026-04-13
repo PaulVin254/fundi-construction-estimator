@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from pydantic import BaseModel, EmailStr, ValidationError
+from pydantic import BaseModel, EmailStr, ValidationError, Field
 from dotenv import load_dotenv
 
 # Import ADK components
@@ -101,25 +101,30 @@ app.add_middleware(
 # =============================================================================
 
 class ConstructionQuery(BaseModel):
-    user_input: str
-    session_id: str
-    email: Optional[str] = None
-    name: Optional[str] = None
-    phone: Optional[str] = None
+    user_input: str = Field(..., max_length=2000, description="The prompt from the user")
+    session_id: str = Field(..., max_length=100, pattern=r"^[a-zA-Z0-9_\-]+$")
+    email: Optional[EmailStr] = None
+    name: Optional[str] = Field(None, max_length=150)
+    phone: Optional[str] = Field(None, max_length=25, pattern=r"^\+?[0-9\s\-\(\)]+$")
+
+class EstimateItem(BaseModel):
+    item: str = Field(..., max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    cost: str = Field(..., max_length=50)
 
 class EstimateData(BaseModel):
-    client_name: Optional[str] = None
-    client_email: Optional[str] = None
-    project_title: str
-    items: List[Dict]
-    total_cost: Optional[str] = None
-    cost_per_sqm: Optional[str] = None
+    client_name: Optional[str] = Field(None, max_length=150)
+    client_email: Optional[EmailStr] = None
+    project_title: str = Field(..., max_length=250)
+    items: List[EstimateItem] = Field(..., max_length=200)
+    total_cost: Optional[str] = Field(None, max_length=50)
+    cost_per_sqm: Optional[str] = Field(None, max_length=50)
 
 class EstimateGenerationRequest(BaseModel):
-    session_id: Optional[str] = None
-    name: Optional[str] = None
-    client_name: Optional[str] = None
-    email: Optional[str] = None
+    session_id: Optional[str] = Field(None, max_length=100)
+    name: Optional[str] = Field(None, max_length=150)
+    client_name: Optional[str] = Field(None, max_length=150)
+    email: Optional[EmailStr] = None
     estimate_data: EstimateData
 
     @property
