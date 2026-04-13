@@ -181,6 +181,7 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
     Returns:
         bytes: The generated PDF content.
     """
+    import html
     
     # Calculate Total
     total_cost = 0.0
@@ -196,11 +197,15 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
             
         # Alternating row colors
         bg_color = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+        
+        # --- SECURITY PATCH: Escape all user-provided fields ---
+        safe_item_name = html.escape(item.get('item', ''))
+        safe_description = html.escape(item.get('description', ''))
             
         rows_html += f"""
         <tr style="background-color: {bg_color};">
-            <td style="padding: 10px; border-bottom: 1px solid #eee;">{item.get('item', '')}</td>
-            <td style="padding: 10px; border-bottom: 1px solid #eee;">{item.get('description', '')}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">{safe_item_name}</td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">{safe_description}</td>
             <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right; font-family: monospace;">{cost_val:,.2f}</td>
         </tr>
         """
@@ -336,13 +341,13 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
             <table width="100%">
                 <tr>
                     <td width="15%"><b>Name:</b></td>
-                    <td width="35%">{client_data.get('name', 'Valued Client')}</td>
+                    <td width="35%">{html.escape(client_data.get('name', 'Valued Client'))}</td>
                     <td width="15%"><b>Project:</b></td>
-                    <td width="35%">{client_data.get('project', 'Residential Construction')}</td>
+                    <td width="35%">{html.escape(client_data.get('project', 'Residential Construction'))}</td>
                 </tr>
                 <tr>
                     <td><b>Email:</b></td>
-                    <td>{client_data.get('email', 'N/A')}</td>
+                    <td>{html.escape(client_data.get('email', 'N/A'))}</td>
                     <td><b>Ref ID:</b></td>
                     <td>{uuid.uuid4().hex[:8].upper()}</td>
                 </tr>

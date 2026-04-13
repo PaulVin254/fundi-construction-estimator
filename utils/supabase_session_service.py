@@ -40,11 +40,11 @@ class SupabaseSessionService(BaseSessionService):
                 "history": []
             }
             
-            # Add optional user details if provided
+            # Add optional user details if provided, truncated to prevent DB bloat
             if user_name:
-                data["user_name"] = user_name
+                data["user_name"] = str(user_name)[:150]
             if user_email:
-                data["user_email"] = user_email
+                data["user_email"] = str(user_email)[:150]
                 
             self.supabase.table("sessions").insert(data).execute()
             print(f"✅ Session created in Supabase: {session_id}")
@@ -105,6 +105,10 @@ class SupabaseSessionService(BaseSessionService):
             history_data = []
             history = session.state.get("history", []) if session.state else []
             
+            # Truncate history to the last 20 messages to prevent payload bloat
+            MAX_HISTORY_LENGTH = 20
+            history = history[-MAX_HISTORY_LENGTH:]
+            
             print(f"🔍 Saving session {session.id}: {len(history)} messages in state")
             
             for i, content in enumerate(history):
@@ -120,11 +124,11 @@ class SupabaseSessionService(BaseSessionService):
                 "updated_at": datetime.now().isoformat()
             }
             
-            # Update user details if provided
+            # Update user details if provided, truncated to prevent DB bloat
             if user_name:
-                update_data["user_name"] = user_name
+                update_data["user_name"] = str(user_name)[:150]
             if user_email:
-                update_data["user_email"] = user_email
+                update_data["user_email"] = str(user_email)[:150]
             
             self.supabase.table("sessions").update(update_data).eq("session_id", session.id).execute()
             
