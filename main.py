@@ -391,7 +391,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
 
         # === INJECT CONTEXT (FIXED) ===
         # If we know the user's name/email from the session, tell the Agent silently.
-        user_text = query.user_input
+        # --- SECURITY PATCH: Truncate and frame the user query to prevent prompt injection ---
+        safe_query = query.user_input.strip()[:2000]
         context_note = ""
         
         # 1. Try to get from attributes (safely)
@@ -416,7 +417,9 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         if context_note:
             # Prepend context to the user's message so the Agent sees it
             print(f"🧠 Injecting context: {context_note}")
-            user_text = f"{context_note}\n\n{query.user_input}"
+            user_text = f"{context_note}\n\nUser Request: {safe_query}"
+        else:
+            user_text = f"User Request: {safe_query}"
         # ==============================
 
         # Format the user input as a Content object (required by Google ADK)

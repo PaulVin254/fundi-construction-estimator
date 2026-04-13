@@ -107,8 +107,12 @@ async def chat_loop():
             continue  # Skip agent execution for save command
 
         # --- Agent Interaction (Inside the Loop) ---
+        # --- SECURITY PATCH: Frame the input to prevent prompt injection ---
+        safe_query = user_query.strip()[:2000]
+        sanitized_query = f"User Request: {safe_query}"
+        
         # Format the user's query into the structure the agent understands.
-        new_message = Content(role="user", parts=[Part(text=user_query)])
+        new_message = Content(role="user", parts=[Part(text=sanitized_query)])
 
         try:
             # The runner.run() method sends the message and gets a stream of events back.
