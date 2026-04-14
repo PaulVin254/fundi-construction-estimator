@@ -283,7 +283,10 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
 
         # Extract data from the nested object
         project_title = payload.estimate_data.project_title
-        items = payload.estimate_data.items
+        
+        # FIX: Convert Pydantic models into dictionaries for the PDF generator
+        raw_items = payload.estimate_data.items
+        items = [item.model_dump() if hasattr(item, "model_dump") else item.dict() for item in raw_items]
         
         # 1. Generate PDF (Use professional template if WeasyPrint available)
         pdf_bytes = await asyncio.to_thread(
