@@ -469,7 +469,6 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                     # Add agent response to history
                     agent_message = Content(role="model", parts=[Part(text=fundi_response)])
                     current_history.append(agent_message)
-                    break
         
         print(f"🔄 Run complete, manually updating session history...")
         
