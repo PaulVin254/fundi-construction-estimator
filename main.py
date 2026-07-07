@@ -85,7 +85,9 @@ origins = [
     "https://eris.co.ke",
     "https://www.eris.co.ke",
     "https://paulwakoli.me",
-    "https://www.paulwakoli.me"
+    "https://www.paulwakoli.me",
+    "https://stfundiestimatorweb.z28.web.core.windows.net",
+    "http://stfundiestimatorweb.z28.web.core.windows.net"
 ]
 
 app.add_middleware(
