@@ -16,11 +16,11 @@ try:
     import weasyprint
     WEASYPRINT_AVAILABLE = True
     WEASYPRINT_VERSION = getattr(weasyprint, "__version__", "unknown")
-    print("✅ WeasyPrint loaded successfully")
+    print("[OK] WeasyPrint loaded successfully")
 except (ImportError, OSError) as e:
     WEASYPRINT_AVAILABLE = False
     WEASYPRINT_VERSION = "unavailable"
-    print(f"⚠️ WeasyPrint not available ({e}). Using xhtml2pdf fallback.")
+    print(f"[WARNING] WeasyPrint not available ({e}). Using xhtml2pdf fallback.")
 
 # xhtml2pdf fallback (always available)
 try:
