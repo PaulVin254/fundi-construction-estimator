@@ -20,7 +20,7 @@ class SupabaseSessionService(BaseSessionService):
         """Get current Unix timestamp (seconds since epoch)"""
         return time.time()
 
-    async def create_session(self, app_name: str, user_id: str, session_id: str, user_name: str = None, user_email: str = None) -> Session:
+    async def create_session(self, app_name: str, user_id: str, session_id: str, user_name: str = None, user_email: str = None, **kwargs) -> Session:
         """Create a new session with proper Google ADK Session structure"""
         # Create Session with required fields
         session = Session(
@@ -53,7 +53,7 @@ class SupabaseSessionService(BaseSessionService):
         
         return session
 
-    async def get_session(self, app_name: str, user_id: str, session_id: str) -> Session:
+    async def get_session(self, app_name: str, user_id: str, session_id: str, **kwargs) -> Session:
         """Retrieve a session from Supabase"""
         try:
             response = self.supabase.table("sessions").select("*").eq("session_id", session_id).execute()
@@ -98,7 +98,7 @@ class SupabaseSessionService(BaseSessionService):
             print(f"⚠️ Session not found in Supabase: {e}")
             raise Exception(f"Session {session_id} not found")
 
-    async def update_session(self, session: Session, user_name: str = None, user_email: str = None) -> None:
+    async def update_session(self, session: Session, user_name: str = None, user_email: str = None, **kwargs) -> None:
         """Update a session in Supabase"""
         try:
             # Extract history from state
@@ -137,7 +137,7 @@ class SupabaseSessionService(BaseSessionService):
         except Exception as e:
             print(f"❌ Error updating session in Supabase: {e}")
 
-    async def delete_session(self, app_name: str, user_id: str, session_id: str) -> None:
+    async def delete_session(self, app_name: str, user_id: str, session_id: str, **kwargs) -> None:
         """Delete a session from Supabase"""
         try:
             self.supabase.table("sessions").delete().eq("session_id", session_id).execute()
@@ -145,7 +145,7 @@ class SupabaseSessionService(BaseSessionService):
         except Exception as e:
             print(f"❌ Error deleting session in Supabase: {e}")
 
-    async def list_sessions(self, app_name: str, user_id: str) -> List[Session]:
+    async def list_sessions(self, app_name: str, user_id: str, **kwargs) -> List[Session]:
         """List all sessions for a user"""
         try:
             response = self.supabase.table("sessions").select("*").eq(
