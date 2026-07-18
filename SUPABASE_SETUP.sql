@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id TEXT NOT NULL,
     user_name TEXT,
     user_email TEXT,
+    user_phone TEXT,
     history JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -11,6 +11,9 @@ import glob
 import asyncio
 import re
 import json
+import uuid
+import urllib.parse
+from datetime import datetime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -116,7 +119,7 @@ class EstimateItem(BaseModel):
 
 class EstimateData(BaseModel):
     client_name: Optional[str] = Field(None, max_length=150)
-    client_email: Optional[EmailStr] = None
+    client_email: Optional[str] = Field(None, max_length=250)
     project_title: str = Field(..., max_length=250)
     items: List[EstimateItem] = Field(..., max_length=200)
     total_cost: Optional[str] = Field(None, max_length=50)
@@ -126,7 +129,7 @@ class EstimateGenerationRequest(BaseModel):
     session_id: Optional[str] = Field(None, max_length=100)
     name: Optional[str] = Field(None, max_length=150)
     client_name: Optional[str] = Field(None, max_length=150)
-    email: Optional[EmailStr] = None
+    email: Optional[str] = Field(None, max_length=250)
     estimate_data: EstimateData
 
     @property
@@ -277,11 +280,15 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
                 except Exception as e:
                     print(f"   ⚠️ Could not fetch session: {e}")
 
-        # Final Validation
+        # Final Validation (Email is now optional for WhatsApp flow)
         if not final_email or "@" not in final_email:
-             raise HTTPException(status_code=400, detail="Email address is required. Please provide it or ensure your session is active.")
+             print("ℹ️ No email address provided or found. Skipping email delivery.")
+             final_email = None
 
-        print(f"🚀 Generating PDF for {final_name} <{final_email}>")
+        print(f"🚀 Generating PDF for {final_name} (Email: {final_email or 'None'})")
+
+        # Generate unique estimate reference at handler level
+        estimate_reference = "ERIS-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
 
         # Extract data from the nested object
         project_title = payload.estimate_data.project_title
@@ -295,8 +302,9 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
             generate_professional_pdf,
             client_data={
                 "name": final_name, 
-                "email": final_email, 
-                "project": project_title
+                "email": final_email or "N/A", 
+                "project": project_title,
+                "estimate_reference": estimate_reference
             },
             estimate_items=items
         )
@@ -308,10 +316,33 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
                     handle_estimate_workflow, 
                     final_email, 
                     final_name, 
-                    pdf_bytes
+                    pdf_bytes,
+                    estimate_reference
                 )
             )
-            return {"status": "success", "message": f"Estimate sent to {final_email}"}
+            
+            # Construct WhatsApp pre-filled link
+            whatsapp_number = os.getenv("FUNDI_WHATSAPP_NUMBER", "254700000000").replace("+", "").strip()
+            whatsapp_text = f"Hi Fundi, please send my estimate {estimate_reference}"
+            encoded_text = urllib.parse.quote(whatsapp_text)
+            whatsapp_link = f"https://wa.me/{whatsapp_number}?text={encoded_text}"
+            
+            # Construct deterministic Supabase Storage PDF URL
+            pdf_url = f"{supabase_url}/storage/v1/object/public/estimates/{estimate_reference}.pdf"
+            
+            response_msg = f"Estimate generated successfully with reference {estimate_reference}."
+            if final_email:
+                response_msg += f" Email sent to {final_email}."
+            else:
+                response_msg += " Available for WhatsApp delivery."
+                
+            return {
+                "status": "success",
+                "message": response_msg,
+                "estimate_reference": estimate_reference,
+                "pdf_url": pdf_url,
+                "whatsapp_link": whatsapp_link
+            }
         else:
             raise HTTPException(status_code=500, detail="PDF generation failed")
             
@@ -344,11 +375,12 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
             print(f"✅ Retrieved existing session: {session_id}")
             
             # Update user details if provided in the query
-            if query.name or query.email:
+            if query.name or query.email or query.phone:
                 await session_service.update_session(
                     session, 
                     user_name=query.name, 
-                    user_email=query.email
+                    user_email=query.email,
+                    user_phone=query.phone
                 )
                 # === FIX: Also save to session.state so it's accessible in Python ===
                 if session.state is None:
@@ -357,6 +389,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                     session.state["user_name"] = query.name
                 if query.email:
                     session.state["user_email"] = query.email
+                if query.phone:
+                    session.state["user_phone"] = query.phone
                 # ===================================================================
                 
         except Exception:
@@ -367,7 +401,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                 user_id=user_id,
                 session_id=session_id,
                 user_name=query.name,
-                user_email=query.email
+                user_email=query.email,
+                user_phone=query.phone
             )
             # === FIX: Initialize state with user details ===
             if session.state is None:
@@ -376,6 +411,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                 session.state["user_name"] = query.name
             if query.email:
                 session.state["user_email"] = query.email
+            if query.phone:
+                session.state["user_phone"] = query.phone
             # ===============================================
         
         # Get history prepared for LLM (with memory optimization)
@@ -403,20 +440,24 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
         # 1. Try to get from attributes (safely)
         s_name = getattr(session, "user_name", None)
         s_email = getattr(session, "user_email", None)
+        s_phone = getattr(session, "user_phone", None)
         
         # 2. Fallback: Try to get from state (where we just saved it)
         if not s_name and session.state:
             s_name = session.state.get("user_name")
         if not s_email and session.state:
             s_email = session.state.get("user_email")
+        if not s_phone and session.state:
+            s_phone = session.state.get("user_phone")
             
-        if s_name or s_email:
+        if s_name or s_email or s_phone:
             name_str = s_name or "Valued Client"
             email_str = s_email or "unknown"
+            phone_str = s_phone or "unknown"
             context_note = (
-                f"[System Note: The user is logged in as {name_str} ({email_str}). "
-                f"If they ask for a report, DO NOT ask for their email again. "
-                f"Instead, immediately generate the <ESTIMATE_DATA> block so the 'Email Report' button appears.]"
+                f"[System Note: The user is logged in as {name_str} ({email_str}), phone: {phone_str}. "
+                f"If they ask for a report, DO NOT ask for their details again. "
+                f"Instead, immediately generate the <ESTIMATE_DATA> block so the report button appears.]"
             )
             
         if context_note:
@@ -483,6 +524,8 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
             session.state["user_name"] = s_name
         if s_email:
             session.state["user_email"] = s_email
+        if s_phone:
+            session.state["user_phone"] = s_phone
         # ===========================================================
         
         # Log the history status

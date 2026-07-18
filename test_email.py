@@ -69,7 +69,14 @@ def test_full_workflow():
     print("🧪 TEST: Full Workflow (PDF + Email)")
     print("=" * 50)
     
-    pdf_bytes = generate_professional_pdf(TEST_CLIENT_DATA, TEST_ITEMS)
+    import uuid
+    from datetime import datetime
+    estimate_reference = "ERIS-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
+    
+    client_data = TEST_CLIENT_DATA.copy()
+    client_data["estimate_reference"] = estimate_reference
+    
+    pdf_bytes = generate_professional_pdf(client_data, TEST_ITEMS)
     
     if not pdf_bytes:
         print("❌ PDF generation failed! Cannot proceed.")
@@ -78,7 +85,7 @@ def test_full_workflow():
     print(f"✅ PDF generated: {len(pdf_bytes)} bytes")
     print(f"📧 Attempting to send to: {TEST_EMAIL}")
     
-    success = handle_estimate_workflow(TEST_EMAIL, TEST_NAME, pdf_bytes)
+    success = handle_estimate_workflow(TEST_EMAIL, TEST_NAME, pdf_bytes, estimate_reference)
     
     if success:
         print("✅ Email workflow completed successfully!")

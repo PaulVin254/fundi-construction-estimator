@@ -20,7 +20,7 @@ class SupabaseSessionService(BaseSessionService):
         """Get current Unix timestamp (seconds since epoch)"""
         return time.time()
 
-    async def create_session(self, app_name: str, user_id: str, session_id: str, user_name: str = None, user_email: str = None, **kwargs) -> Session:
+    async def create_session(self, app_name: str, user_id: str, session_id: str, user_name: str = None, user_email: str = None, user_phone: str = None, **kwargs) -> Session:
         """Create a new session with proper Google ADK Session structure"""
         # Create Session with required fields
         session = Session(
@@ -31,6 +31,9 @@ class SupabaseSessionService(BaseSessionService):
             events=[],  # Empty events list
             last_update_time=self._get_unix_timestamp()  # Unix timestamp as float
         )
+        session.user_name = user_name
+        session.user_email = user_email
+        session.user_phone = user_phone
         
         try:
             data = {
@@ -45,6 +48,8 @@ class SupabaseSessionService(BaseSessionService):
                 data["user_name"] = str(user_name)[:150]
             if user_email:
                 data["user_email"] = str(user_email)[:150]
+            if user_phone:
+                data["user_phone"] = str(user_phone)[:50]
                 
             self.supabase.table("sessions").insert(data).execute()
             print(f"✅ Session created in Supabase: {session_id}")
@@ -91,6 +96,11 @@ class SupabaseSessionService(BaseSessionService):
                 last_update_time=self._get_unix_timestamp()  # Unix timestamp as float
             )
             
+            # Reconstruct user details
+            session.user_name = data.get("user_name")
+            session.user_email = data.get("user_email")
+            session.user_phone = data.get("user_phone")
+            
             print(f"✅ Session retrieved from Supabase: {session_id}")
             return session
         
@@ -98,7 +108,7 @@ class SupabaseSessionService(BaseSessionService):
             print(f"⚠️ Session not found in Supabase: {e}")
             raise Exception(f"Session {session_id} not found")
 
-    async def update_session(self, session: Session, user_name: str = None, user_email: str = None, **kwargs) -> None:
+    async def update_session(self, session: Session, user_name: str = None, user_email: str = None, user_phone: str = None, **kwargs) -> None:
         """Update a session in Supabase"""
         try:
             # Extract history from state
@@ -129,6 +139,8 @@ class SupabaseSessionService(BaseSessionService):
                 update_data["user_name"] = str(user_name)[:150]
             if user_email:
                 update_data["user_email"] = str(user_email)[:150]
+            if user_phone:
+                update_data["user_phone"] = str(user_phone)[:50]
             
             self.supabase.table("sessions").update(update_data).eq("session_id", session.id).execute()
             

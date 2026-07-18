@@ -28,7 +28,7 @@ def get_supabase_client() -> Optional[Client]:
         print(f"❌ Error initializing Supabase client: {e}")
         return None
 
-def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) -> bool:
+def handle_estimate_workflow(user_email: Optional[str], user_name: str, pdf_bytes: bytes, estimate_reference: str) -> bool:
     """
     Uploads a PDF estimate to Supabase and triggers an n8n webhook for delivery.
 
@@ -36,27 +36,26 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
         user_email (str): The recipient's email address.
         user_name (str): The recipient's name.
         pdf_bytes (bytes): The PDF content in bytes.
+        estimate_reference (str): The deterministic reference ID for the estimate.
 
     Returns:
         bool: True if the workflow completed successfully, False otherwise.
     """
-    print(f"🚀 Starting estimate workflow for {user_email}...")
+    print(f"🚀 Starting estimate workflow for {user_email or 'WhatsApp Client'} (Ref: {estimate_reference})...")
 
     # 1. Initialize Supabase Client
     supabase = get_supabase_client()
     if not supabase:
         return False
 
-    # 2. Generate unique filename
-    file_name = f"estimate_{uuid.uuid4()}.pdf"
+    # 2. Generate unique filename (Deterministic using estimate_reference)
+    file_name = f"{estimate_reference}.pdf"
     
     try:
         # 3. Upload to Supabase Storage
         print(f"📤 Uploading {file_name} to bucket '{BUCKET_NAME}'...")
         
         # Upload returns a response object, we check for errors implicitly via try/except
-        # Note: supabase-py storage upload signature might vary slightly by version, 
-        # but generally takes path, file, and options.
         res = supabase.storage.from_(BUCKET_NAME).upload(
             path=file_name,
             file=pdf_bytes,
@@ -64,7 +63,6 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
         )
         
         # 4. Get Public URL
-        # get_public_url returns a string URL directly in newer versions
         public_url_response = supabase.storage.from_(BUCKET_NAME).get_public_url(file_name)
         
         # Handle different return types depending on version (string vs object)
@@ -78,30 +76,34 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
 
         print(f"✅ Upload successful. URL: {public_url}")
 
-        # 5. Trigger n8n Webhook
-        if not N8N_SECRET:
-            print("⚠️ Warning: N8N_SECRET not found. Webhook might fail auth.")
+        # 5. Trigger n8n Webhook (if email is provided)
+        if user_email and "@" in user_email:
+            if not N8N_SECRET:
+                print("⚠️ Warning: N8N_SECRET not found. Webhook might fail auth.")
 
-        payload = {
-            "email": user_email,
-            "name": user_name,
-            "pdf_url": public_url
-        }
+            payload = {
+                "email": user_email,
+                "name": user_name,
+                "pdf_url": public_url
+            }
 
-        headers = {
-            "Content-Type": "application/json",
-            "x-n8n-secret": N8N_SECRET if N8N_SECRET else ""
-        }
+            headers = {
+                "Content-Type": "application/json",
+                "x-n8n-secret": N8N_SECRET if N8N_SECRET else ""
+            }
 
-        print(f"🔗 Triggering webhook at {N8N_WEBHOOK_URL}...")
-        response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=10)
+            print(f"🔗 Triggering webhook at {N8N_WEBHOOK_URL}...")
+            response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=10)
 
-        if response.status_code == 200:
-            print("✅ Webhook triggered successfully.")
-            return True
+            if response.status_code == 200:
+                print("✅ Webhook triggered successfully.")
+                return True
+            else:
+                print(f"❌ Webhook failed with status {response.status_code}: {response.text}")
+                return False
         else:
-            print(f"❌ Webhook failed with status {response.status_code}: {response.text}")
-            return False
+            print("ℹ️ No email address provided. Skipping n8n email webhook.")
+            return True
 
     except Exception as e:
         print(f"❌ Error in estimate workflow: {str(e)}")

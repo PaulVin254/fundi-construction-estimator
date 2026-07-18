@@ -108,7 +108,9 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
         })
     
     # Generate estimate reference
-    estimate_reference = "ERIS-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
+    estimate_reference = client_data.get('estimate_reference')
+    if not estimate_reference:
+        estimate_reference = "ERIS-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
     
     # Calculate cost per sqm (default estimate: ~KES 45,000/sqm for standard construction)
     estimated_sqm = total_cost / 45000 if total_cost > 0 else 0
@@ -349,7 +351,7 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
                     <td><b>Email:</b></td>
                     <td>{html.escape(client_data.get('email', 'N/A'))}</td>
                     <td><b>Ref ID:</b></td>
-                    <td>{uuid.uuid4().hex[:8].upper()}</td>
+                    <td>{html.escape(client_data.get('estimate_reference', '')) or uuid.uuid4().hex[:8].upper()}</td>
                 </tr>
             </table>
         </div>
@@ -403,11 +405,11 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
 # 3. WORKFLOW ORCHESTRATION
 # =============================================================================
 
-def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) -> bool:
+def handle_estimate_workflow(user_email: Optional[str], user_name: str, pdf_bytes: bytes, estimate_reference: str) -> bool:
     """
     Orchestrates the secure delivery: Upload -> Webhook.
     """
-    print(f"🚀 Starting workflow for {user_email}...")
+    print(f"🚀 Starting workflow for {user_email or 'WhatsApp Client'} (Ref: {estimate_reference})...")
 
     if not pdf_bytes:
         print("❌ Error: PDF content is empty.")
@@ -424,8 +426,8 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
         print(f"❌ Error initializing Supabase: {e}")
         return False
 
-    # 2. Generate Filename
-    filename = f"estimate_{uuid.uuid4()}.pdf"
+    # 2. Generate Filename (Deterministic using estimate_reference)
+    filename = f"{estimate_reference}.pdf"
 
     try:
         # 3. Upload to Supabase
@@ -445,28 +447,32 @@ def handle_estimate_workflow(user_email: str, user_name: str, pdf_bytes: bytes) 
              
         print(f"✅ Uploaded: {public_url}")
 
-        # 5. Trigger n8n Webhook
-        payload = {
-            "email": user_email,
-            "name": user_name,
-            "pdf_url": public_url
-        }
+        # 5. Trigger n8n Webhook (if email is provided)
+        if user_email and "@" in user_email:
+            payload = {
+                "email": user_email,
+                "name": user_name,
+                "pdf_url": public_url
+            }
 
-        headers = {
-            "Content-Type": "application/json",
-            "x-n8n-secret": N8N_SECRET if N8N_SECRET else ""
-        }
+            headers = {
+                "Content-Type": "application/json",
+                "x-n8n-secret": N8N_SECRET if N8N_SECRET else ""
+            }
 
-        print(f"🔗 Calling Webhook: {N8N_WEBHOOK_URL}")
-        # Added a strict circuit-breaker timeout of 3.0s to prevent hanging worker threads
-        response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3.0)
+            print(f"🔗 Calling Webhook: {N8N_WEBHOOK_URL}")
+            # Added a strict circuit-breaker timeout of 3.0s to prevent hanging worker threads
+            response = requests.post(N8N_WEBHOOK_URL, json=payload, headers=headers, timeout=3.0)
 
-        if response.status_code == 200:
-            print("✅ Webhook Success! Estimate sent.")
-            return True
+            if response.status_code == 200:
+                print("✅ Webhook Success! Estimate sent.")
+                return True
+            else:
+                print(f"❌ Webhook Failed: {response.status_code} - {response.text}")
+                return False
         else:
-            print(f"❌ Webhook Failed: {response.status_code} - {response.text}")
-            return False
+            print("ℹ️ No email address provided. Skipping n8n email webhook.")
+            return True
 
     except Exception as e:
         print(f"❌ Workflow Error: {str(e)}")
