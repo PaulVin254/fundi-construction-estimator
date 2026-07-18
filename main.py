@@ -264,6 +264,7 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
                 try:
                     session = await session_service.create_session(
                         app_name=APP_NAME,
+                        user_id=session_id_to_use,
                         session_id=session_id_to_use
                     )
                     # Note: create_session actually gets existing if it exists
