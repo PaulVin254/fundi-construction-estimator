@@ -322,7 +322,7 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
             )
             
             # Construct WhatsApp pre-filled link
-            whatsapp_number = os.getenv("FUNDI_WHATSAPP_NUMBER", "254700000000").replace("+", "").strip()
+            whatsapp_number = os.getenv("FUNDI_WHATSAPP_NUMBER", "254727838624").replace("+", "").strip()
             whatsapp_text = f"Hi Fundi, please send my estimate {estimate_reference}"
             encoded_text = urllib.parse.quote(whatsapp_text)
             whatsapp_link = f"https://wa.me/{whatsapp_number}?text={encoded_text}"
