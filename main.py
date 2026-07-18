@@ -452,13 +452,25 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
             
         if s_name or s_email or s_phone:
             name_str = s_name or "Valued Client"
-            email_str = s_email or "unknown"
+            email_str = s_email or ("whatsapp" if s_phone else "unknown")
             phone_str = s_phone or "unknown"
-            context_note = (
-                f"[System Note: The user is logged in as {name_str} ({email_str}), phone: {phone_str}. "
-                f"If they ask for a report, DO NOT ask for their details again. "
-                f"Instead, immediately generate the <ESTIMATE_DATA> block so the report button appears.]"
-            )
+            
+            if s_phone:
+                context_note = (
+                    f"[System Note: The user is logged in as {name_str} ({email_str}), phone: {phone_str}. "
+                    f"The user wants their estimate delivered via WhatsApp. "
+                    f"DO NOT ask for their email address or say you cannot send it on WhatsApp. "
+                    f"Instead, immediately generate the <ESTIMATE_DATA> block with \"client_email\": \"whatsapp\" in the JSON, "
+                    f"so the 'Get PDF on WhatsApp' button renders on their screen.]"
+                )
+            else:
+                context_note = (
+                    f"[System Note: The user is logged in as {name_str} ({email_str}). "
+                    f"The user wants their estimate delivered via Email. "
+                    f"DO NOT ask for their details again. "
+                    f"Instead, immediately generate the <ESTIMATE_DATA> block with their actual email in \"client_email\" in the JSON, "
+                    f"so the 'Email Report' button renders.]"
+                )
             
         if context_note:
             # Prepend context to the user's message so the Agent sees it
