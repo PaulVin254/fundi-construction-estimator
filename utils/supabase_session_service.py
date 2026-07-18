@@ -31,9 +31,11 @@ class SupabaseSessionService(BaseSessionService):
             events=[],  # Empty events list
             last_update_time=self._get_unix_timestamp()  # Unix timestamp as float
         )
-        session.user_name = user_name
-        session.user_email = user_email
-        session.user_phone = user_phone
+        if session.state is None:
+            session.state = {}
+        session.state["user_name"] = user_name
+        session.state["user_email"] = user_email
+        session.state["user_phone"] = user_phone
         
         try:
             data = {
@@ -97,9 +99,11 @@ class SupabaseSessionService(BaseSessionService):
             )
             
             # Reconstruct user details
-            session.user_name = data.get("user_name")
-            session.user_email = data.get("user_email")
-            session.user_phone = data.get("user_phone")
+            if session.state is None:
+                session.state = {}
+            session.state["user_name"] = data.get("user_name")
+            session.state["user_email"] = data.get("user_email")
+            session.state["user_phone"] = data.get("user_phone")
             
             print(f"✅ Session retrieved from Supabase: {session_id}")
             return session
