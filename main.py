@@ -51,7 +51,7 @@ def setup_azure_workload_identity():
     identity_header = os.getenv("IDENTITY_HEADER")
     
     if identity_endpoint and identity_header:
-        token_url = f"{identity_endpoint}?api-version=2019-08-01&resource=https://iam.googleapis.com/projects/155019856232/locations/global/workloadIdentityPools/azure-pool/providers/azure-provider"
+        token_url = f"{identity_endpoint}?api-version=2019-08-01&resource=https://management.azure.com/"
         config = {
             "type": "external_account",
             "audience": "//iam.googleapis.com/projects/155019856232/locations/global/workloadIdentityPools/azure-pool/providers/azure-provider",
