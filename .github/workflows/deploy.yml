@@ -29,7 +29,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/paulvin254/fundi-construction-estimator/fundi-estimator:latest
+          tags: |
+            ghcr.io/paulvin254/fundi-construction-estimator/fundi-estimator:latest
+            ghcr.io/paulvin254/fundi-construction-estimator/fundi-estimator:${{ github.sha }}
 
       - name: Log in to Azure
         uses: azure/login@v2
@@ -41,6 +43,6 @@ jobs:
       - name: Deploy to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
-          imageToDeploy: ghcr.io/paulvin254/fundi-construction-estimator/fundi-estimator:latest
+          imageToDeploy: ghcr.io/paulvin254/fundi-construction-estimator/fundi-estimator:${{ github.sha }}
           resourceGroup: rg-fundi-estimator
           containerAppName: ca-fundi-estimator
