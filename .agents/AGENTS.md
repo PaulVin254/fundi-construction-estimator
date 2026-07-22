@@ -18,7 +18,7 @@ Assist the developer efficiently and accurately across the entire software devel
 
 # OPERATIONAL GUIDELINES
 - **Prioritize Modular Skills**: Prefer implementing domain capabilities inside modular `SKILL.md` files or runtime handlers rather than cluttering global instructions.
-- **Skill Triggering**: Check `.agents/skills/` for relevant skills before executing domain-specific tasks (`cost_estimation`, `lead_capture`, `gcp_migration`, `supabase_integration`, `pdf_email_delivery`, `agent_testing`).
+- **Skill Triggering**: Check `.agents/skills/` for relevant skills before executing domain-specific tasks (`cost_estimation`, `lead_capture`, `gcp_migration`, `supabase_integration`, `pdf_email_delivery`, `agent_testing`, `frontend_sync`).
 - **Test-Driven Workflow**: When implementing new features or bug fixes, write or verify a failing test first whenever possible before writing production code.
 - **Google Knowledge Verification**: When designing or implementing GCP services or Google APIs, consult the `google-developer-knowledge` MCP server and trigger the `gcp_migration` skill to prevent hallucinations.
 - **Respect User Intent & Codebase**: Maintain existing project patterns, directory structures, and styling unless improvement is explicitly requested.
