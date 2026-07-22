@@ -1,37 +1,23 @@
-# Website Builder Simple Agent
+# Fundi - Kenya Construction Cost Estimator
 
-This project is a minimal Agent Development Kit (ADK) app that uses a single LLM-powered agent to generate complete HTML+CSS+JS web pages from natural language prompts. The generated content is saved to a timestamped `.html` file and can be opened in a browser.
+This project is an LLM-powered Agent Development Kit (ADK) application that estimates residential building construction costs in Kenya based on regional market pricing, material choices, and finish levels.
 
 ---
 
 ## 📦 Features
 
-- ✅ Gemini-powered LLM agent using Google ADK
-- ✅ Takes natural language queries like “Create a landing page with a red button”
-- ✅ Generates clean, complete HTML pages with inline CSS/JS
-- ✅ Saves output as a timestamped `.html` file
-- ✅ Easily extendable with sub-agents and more tools
+- ✅ Gemini 2.0 / 2.5 Flash agent built with Google ADK
+- ✅ Accurate Kenyan residential building cost calculations (Nairobi, Mombasa, Upcountry)
+- ✅ Itemized breakdowns (Foundation, Walling, Roofing, Finishing, Labor, Contingency)
+- ✅ ReportLab PDF quote generation & SendGrid Email / WhatsApp delivery
+- ✅ Supabase session persistence & keyless GCP Vertex AI authentication
+- ✅ Live production deployment on Azure Container Apps
 
 ---
 
-## 📂 Project Structure
+## 📂 Project Location
 
-```text
-version_1_website_builder_simple
-├── website_builder_simple/        # Main agent
-│   ├── agent.py
-│   ├── __init__.py
-│   ├── instructions.txt
-│   └── description.txt
-├── tools/
-│   ├── __init__.py
-│   └── file_writer_tool.py        # Tool to write HTML files
-├── utils/
-│   ├── __init__.py
-│   └── file_loader.py             # Utility for reading prompt files
-├── output/                        # Auto-generated folder with HTML outputs
-└── __init__.py                    # Exposes `root_agent` to ADK
-```
+Local Path: `C:\Users\user\Desktop\Website Information\fundi-construction-estimator`
 
 ---
 
@@ -40,13 +26,13 @@ version_1_website_builder_simple
 ### 1. Clone the Repo
 
 ```bash
-git clone https://github.com/theailanguage/adk_samples.git
+git clone https://github.com/PaulVin254/fundi-construction-estimator.git
+cd fundi-construction-estimator
 ```
 
 ### 2. Set Up Python Environment
-Required - Python 3.11+, uv, vs code and git
+Required - Python 3.11+, uv, VS Code, and Git
 ```bash
-cd adk_samples/version_1_website_builder_simple
 uv venv
 source .venv/bin/activate  # or .venv\Scripts\activate.bat on Windows
 uv sync --all-groups
