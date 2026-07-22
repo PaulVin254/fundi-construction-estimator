@@ -42,6 +42,44 @@ from agents.fundi_estimator.agent import root_agent
 # Load environment variables
 load_dotenv()
 
+def setup_azure_workload_identity():
+    """
+    Dynamically configures GCP Workload Identity Federation for Azure Container Apps.
+    Azure Container Apps provides IDENTITY_ENDPOINT and IDENTITY_HEADER in container environment.
+    """
+    identity_endpoint = os.getenv("IDENTITY_ENDPOINT")
+    identity_header = os.getenv("IDENTITY_HEADER")
+    
+    if identity_endpoint and identity_header:
+        token_url = f"{identity_endpoint}?api-version=2019-08-01&resource=https://iam.googleapis.com/projects/155019856232/locations/global/workloadIdentityPools/azure-pool/providers/azure-provider"
+        config = {
+            "type": "external_account",
+            "audience": "//iam.googleapis.com/projects/155019856232/locations/global/workloadIdentityPools/azure-pool/providers/azure-provider",
+            "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+            "token_url": "https://sts.googleapis.com/v1/token",
+            "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/fundi-vertex-sa@project-b0fdb974-1817-4454-927.iam.gserviceaccount.com:generateAccessToken",
+            "credential_source": {
+                "url": token_url,
+                "headers": {
+                    "X-IDENTITY-HEADER": identity_header
+                },
+                "format": {
+                    "type": "json",
+                    "subject_token_field_name": "access_token"
+                }
+            }
+        }
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gcp-credential-config.json")
+        try:
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = config_path
+            print(f"✅ Dynamic Azure Workload Identity Configured: {config_path}")
+        except Exception as e:
+            print(f"⚠️ Could not write GCP credential config: {e}")
+
+setup_azure_workload_identity()
+
 # =============================================================================
 # APP CONFIGURATION
 # =============================================================================
