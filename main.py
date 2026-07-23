@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -703,6 +703,199 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
 
     except Exception as e:
         print(f"Error in consult-fundi: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/consult-fundi-stream")
+@limiter.limit("5/minute")
+async def consult_fundi_stream(query: ConstructionQuery, request: Request):
+    """
+    Streaming endpoint to consult the Fundi agent via Server-Sent Events (SSE).
+    Emits real-time tokens as they are generated and final metadata upon completion.
+    """
+    try:
+        session_id = query.session_id
+        user_id = session_id
+        
+        try:
+            session = await session_service.get_session(
+                app_name=APP_NAME,
+                user_id=user_id,
+                session_id=session_id
+            )
+            if query.name or query.email or query.phone:
+                await session_service.update_session(
+                    session, 
+                    user_name=query.name, 
+                    user_email=query.email,
+                    user_phone=query.phone
+                )
+                if session.state is None:
+                    session.state = {}
+                if query.name:
+                    session.state["user_name"] = query.name
+                if query.email:
+                    session.state["user_email"] = query.email
+                if query.phone:
+                    session.state["user_phone"] = query.phone
+        except Exception:
+            session = await session_service.create_session(
+                app_name=APP_NAME,
+                user_id=user_id,
+                session_id=session_id,
+                user_name=query.name,
+                user_email=query.email,
+                user_phone=query.phone
+            )
+            if session.state is None:
+                session.state = {}
+            if query.name:
+                session.state["user_name"] = query.name
+            if query.email:
+                session.state["user_email"] = query.email
+            if query.phone:
+                session.state["user_phone"] = query.phone
+
+        runner = Runner(
+            agent=root_agent,
+            app_name=APP_NAME,
+            session_service=session_service
+        )
+
+        safe_query = query.user_input.strip()[:2000]
+        context_note = ""
+        
+        s_name = getattr(session, "user_name", None) or (session.state.get("user_name") if session.state else None)
+        s_email = getattr(session, "user_email", None) or (session.state.get("user_email") if session.state else None)
+        s_phone = getattr(session, "user_phone", None) or (session.state.get("user_phone") if session.state else None)
+
+        if s_name or s_email or s_phone:
+            name_str = s_name or "Valued Client"
+            email_str = s_email or ("whatsapp" if s_phone else "unknown")
+            phone_str = s_phone or "unknown"
+            
+            if s_phone:
+                context_note = (
+                    f"[System Note: The user is logged in as {name_str} ({email_str}), phone: {phone_str}. "
+                    f"The user wants their estimate delivered via WhatsApp. "
+                    f"DO NOT ask for their email address or say you cannot send it on WhatsApp. "
+                    f"Instead, immediately generate the <ESTIMATE_DATA> block with \"client_email\": \"whatsapp\" in the JSON, "
+                    f"so the 'Get PDF on WhatsApp' button renders on their screen.]"
+                )
+            else:
+                context_note = (
+                    f"[System Note: The user is logged in as {name_str} ({email_str}). "
+                    f"The user wants their estimate delivered via Email. "
+                    f"DO NOT ask for their details again. "
+                    f"Instead, immediately generate the <ESTIMATE_DATA> block with their actual email in \"client_email\" in the JSON, "
+                    f"so the 'Email Report' button renders.]"
+                )
+            
+        user_text = f"{context_note}\n\nUser Request: {safe_query}" if context_note else f"User Request: {safe_query}"
+        new_message = Content(role="user", parts=[Part(text=user_text)])
+
+        current_history = session.state.get("history", []) if session.state else []
+        current_history.append(new_message)
+
+        async def event_generator():
+            fundi_response = ""
+            events = runner.run_async(
+                user_id=user_id,
+                session_id=session_id,
+                new_message=new_message
+            )
+
+            async for event in events:
+                if hasattr(event, "is_final_response") and event.is_final_response():
+                    if hasattr(event, "content") and hasattr(event.content, "parts") and event.content.parts:
+                        full_text = event.content.parts[0].text
+                        # Compute remaining delta if full text was emitted at end
+                        if len(full_text) > len(fundi_response):
+                            delta = full_text[len(fundi_response):]
+                            fundi_response = full_text
+                            yield f"data: {json.dumps({'type': 'token', 'content': delta})}\n\n"
+                        else:
+                            fundi_response = full_text
+                elif hasattr(event, "content") and hasattr(event.content, "parts") and event.content.parts:
+                    chunk = event.content.parts[0].text
+                    if chunk and chunk != fundi_response:
+                        if len(chunk) > len(fundi_response) and chunk.startswith(fundi_response):
+                            delta = chunk[len(fundi_response):]
+                            fundi_response = chunk
+                            yield f"data: {json.dumps({'type': 'token', 'content': delta})}\n\n"
+                        elif not fundi_response.startswith(chunk):
+                            fundi_response += chunk
+                            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+            # Update session history
+            agent_message = Content(role="model", parts=[Part(text=fundi_response)])
+            current_history.append(agent_message)
+            if session.state is None:
+                session.state = {}
+            session.state["history"] = current_history
+            if s_name:
+                session.state["user_name"] = s_name
+            if s_email:
+                session.state["user_email"] = s_email
+            if s_phone:
+                session.state["user_phone"] = s_phone
+            await session_service.update_session(session)
+
+            # Process structured estimate data
+            estimate_data = None
+            show_estimate_button = False
+            request_lead_info = False
+
+            cleaned_response = fundi_response
+            if "<REQUEST_LEAD_INFO>" in cleaned_response:
+                request_lead_info = True
+                cleaned_response = cleaned_response.replace("<REQUEST_LEAD_INFO>", "").strip()
+
+            if "<ESTIMATE_DATA>" in cleaned_response:
+                try:
+                    match = re.search(r'<ESTIMATE_DATA>(.*?)</ESTIMATE_DATA>', cleaned_response, re.DOTALL)
+                    if match:
+                        json_str = match.group(1).strip()
+                        raw_data = json.loads(json_str)
+                        validated_model = EstimateData(**raw_data)
+                        estimate_data = validated_model.model_dump()
+                        show_estimate_button = True
+
+                        extracted_name = raw_data.get("client_name") or raw_data.get("name")
+                        extracted_email = raw_data.get("client_email") or raw_data.get("email")
+                        if extracted_name or extracted_email:
+                            if session.state is None:
+                                session.state = {}
+                            if extracted_name:
+                                session.state["user_name"] = extracted_name
+                            if extracted_email:
+                                session.state["user_email"] = extracted_email
+                            await session_service.update_session(
+                                session,
+                                user_name=extracted_name or getattr(session, 'user_name', None),
+                                user_email=extracted_email or getattr(session, 'user_email', None)
+                            )
+                        cleaned_response = re.sub(r"<ESTIMATE_DATA>.*?</ESTIMATE_DATA>", "", cleaned_response, flags=re.DOTALL).strip()
+                except Exception as e:
+                    print(f"Error parsing estimate data in stream: {e}")
+
+            cleaned_response = re.sub(r"```xml\s*```", "", cleaned_response).strip()
+            cleaned_response = re.sub(r"```\s*```", "", cleaned_response).strip()
+            cleaned_response = re.sub(r"```\w*\s*\n?\s*```", "", cleaned_response).strip()
+            cleaned_response = re.sub(r"\n{3,}", "\n\n", cleaned_response).strip()
+
+            done_payload = {
+                "type": "done",
+                "fundi_response": cleaned_response,
+                "estimate_data": estimate_data,
+                "show_estimate_button": show_estimate_button,
+                "request_lead_info": request_lead_info
+            }
+            yield f"data: {json.dumps(done_payload)}\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    except Exception as e:
+        print(f"Error in consult-fundi-stream: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
