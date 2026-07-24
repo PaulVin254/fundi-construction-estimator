@@ -134,13 +134,22 @@ FINISH_LEVELS = {
 
 def get_location_code(location_name: str) -> str:
     """Convert location name to code (nairobi, mombasa, upcountry)."""
-    location_lower = location_name.lower().strip()
-    if "nairobi" in location_lower or "nai" in location_lower:
+    if not location_name:
         return "nairobi"
-    elif "mombasa" in location_lower or "mom" in location_lower or "coast" in location_lower:
+    loc = location_name.lower().strip()
+    
+    # Coastal locations
+    if any(k in loc for k in ["mombasa", "mom", "coast", "malindi", "kilifi", "diani", "ukunda", "kwale", "lamu", "nyali", "bamburi", "mtwapa"]):
         return "mombasa"
-    else:
+    # Upcountry towns (different material quarry costs and labor rates)
+    elif any(k in loc for k in ["nakuru", "eldoret", "kisumu", "nyeri", "meru", "kakamega", "kericho", "kisii", "embu", "naivasha", "kitale", "bungoma", "narok"]):
         return "upcountry"
+    # Nairobi & Metro (Kiambu, Ruiru, Thika, Kikuyu, Kitengela, Rongai, Kajiado, Athi River)
+    elif any(k in loc for k in ["nairobi", "nai", "kiambu", "ruiru", "thika", "kikuyu", "kitengela", "rongai", "kajiado", "athi river", "syokimau"]):
+        return "nairobi"
+    else:
+        return "nairobi"
+
 
 
 def get_house_size(house_type: str) -> int:

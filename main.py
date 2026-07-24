@@ -32,7 +32,11 @@ from utils.supabase_session_service import SupabaseSessionService
 from utils.memory_manager import MemoryManager, ConversationMemory, WindowBasedCompaction
 
 # Import Estimate Delivery System
-from estimate_delivery import generate_professional_pdf, generate_simple_pdf, handle_estimate_workflow
+from estimate_delivery import generate_professional_pdf, generate_simple_pdf, handle_estimate_workflow, generate_full_boq_pdf
+from agents.fundi_estimator.boq_calculator import calculate_full_boq
+from tools.web_search_tool import search_kenyan_material_price
+from utils.excel_boq_generator import generate_excel_boq
+from fastapi.responses import FileResponse
 
 # Import the agent
 # Ensure the agents directory is in the python path
@@ -159,9 +163,14 @@ class EstimateData(BaseModel):
     client_name: Optional[str] = Field(None, max_length=150)
     client_email: Optional[str] = Field(None, max_length=250)
     project_title: str = Field(..., max_length=250)
+    house_type: Optional[str] = Field(default="3_bedroom")
+    location: Optional[str] = Field(default="nairobi")
+    size_sqm: Optional[float] = Field(default=None)
+    finish_level: Optional[str] = Field(default="standard")
     items: List[EstimateItem] = Field(..., max_length=200)
     total_cost: Optional[str] = Field(None, max_length=50)
     cost_per_sqm: Optional[str] = Field(None, max_length=50)
+
 
 class EstimateGenerationRequest(BaseModel):
     session_id: Optional[str] = Field(None, max_length=100)
@@ -210,6 +219,67 @@ conversation_memory = ConversationMemory(session_service=session_service)
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
+def extract_building_params(raw_data: dict, user_text: str = "", session_state: dict = None) -> dict:
+    """
+    Intelligently resolves building parameters (house_type, location, size_sqm, finish_level)
+    from LLM JSON, with scanning fallback on user_text or session_state if defaulted or missing.
+    """
+    combined_text = f"{user_text} {json.dumps(session_state or {})}".lower()
+
+    # 1. Location extraction
+    loc = raw_data.get("location")
+    if not loc or loc.lower() == "nairobi":
+        known_locations = [
+            "kiambu", "thika", "ruiru", "kikuyu", "mombasa", "nakuru", "eldoret",
+            "kisumu", "nyeri", "meru", "machakos", "naivasha", "kitengela", "rongai",
+            "kajiado", "malindi", "kilifi", "diani", "kericho", "kisii", "kakamega",
+            "nairobi"
+        ]
+        for lkw in known_locations:
+            if lkw in combined_text:
+                loc = lkw
+                break
+    loc = loc or "nairobi"
+
+    # 2. House type / bedrooms extraction
+    ht = raw_data.get("house_type")
+    if not ht or ht == "3_bedroom":
+        if any(k in combined_text for k in ["1 bedroom", "1-bedroom", "1br", "one bedroom"]):
+            ht = "1_bedroom"
+        elif any(k in combined_text for k in ["2 bedroom", "2-bedroom", "2br", "two bedroom"]):
+            ht = "2_bedroom"
+        elif any(k in combined_text for k in ["4 bedroom", "4-bedroom", "4br", "four bedroom"]):
+            ht = "4_bedroom"
+        elif any(k in combined_text for k in ["5 bedroom", "5-bedroom", "5br", "five bedroom"]):
+            ht = "5_bedroom"
+    ht = ht or "3_bedroom"
+
+    # 3. Finish level extraction
+    fl = raw_data.get("finish_level")
+    if not fl or fl == "standard":
+        if any(k in combined_text for k in ["basic", "cheap", "low budget", "simple"]):
+            fl = "basic"
+        elif any(k in combined_text for k in ["premium", "luxury", "high end", "executive"]):
+            fl = "premium"
+    fl = fl or "standard"
+
+    # 4. Size SQM
+    sqm = raw_data.get("size_sqm")
+    if not sqm:
+        match = re.search(r'(\d+)\s*(sqm|sq\s*m|square\s*meters)', combined_text)
+        if match:
+            try:
+                sqm = float(match.group(1))
+            except ValueError:
+                sqm = None
+
+    return {
+        "house_type": ht,
+        "location": loc,
+        "size_sqm": sqm,
+        "finish_level": fl
+    }
 
 def get_latest_html_report():
     """
@@ -329,61 +399,93 @@ async def generate_estimate(payload: EstimateGenerationRequest, request: Request
         # Generate unique estimate reference at handler level
         estimate_reference = "ERIS-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
 
-        # Extract data from the nested object
-        project_title = payload.estimate_data.project_title
-        
-        # FIX: Convert Pydantic models into dictionaries for the PDF generator
-        raw_items = payload.estimate_data.items
-        items = [item.model_dump() if hasattr(item, "model_dump") else item.dict() for item in raw_items]
-        
-        # 1. Generate PDF (Use professional template if WeasyPrint available)
-        pdf_bytes = await asyncio.to_thread(
-            generate_professional_pdf,
-            client_data={
-                "name": final_name, 
-                "email": final_email or "N/A", 
-                "project": project_title,
-                "estimate_reference": estimate_reference
-            },
-            estimate_items=items
+        # Extract building parameters dynamically from payload and session state
+        ed = payload.estimate_data
+        ed_dict = ed.model_dump() if hasattr(ed, "model_dump") else ed.dict()
+        params = extract_building_params(ed_dict, ed.project_title or "")
+
+        house_type = params["house_type"]
+        location = params["location"]
+        size_sqm = params["size_sqm"]
+        finish_level = params["finish_level"]
+        project_title = f"{house_type.replace('_', ' ').title()} in {location.title()} ({finish_level.title()})"
+
+        print(f"📐 Computing full BOQ: house={house_type}, loc={location}, sqm={size_sqm}, finish={finish_level}")
+
+        # 1. Compute full 7-trade BOQ data
+        boq_data = calculate_full_boq(
+            house_type=house_type,
+            location=location,
+            size_sqm=size_sqm,
+            finish_level=finish_level
         )
-        
-        # 2. Send Workflow (Background)
+
+        client_info = {
+            "name": final_name,
+            "email": final_email or "N/A",
+            "project": project_title,
+            "estimate_reference": estimate_reference
+        }
+
+        # 2. Generate full multi-page BOQ PDF
+        pdf_bytes = await asyncio.to_thread(
+            generate_full_boq_pdf,
+            client_info,
+            boq_data
+        )
+
+        # 3. Generate Excel workbook alongside PDF
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
+        os.makedirs(output_dir, exist_ok=True)
+        sess_code = (payload.session_id or uuid.uuid4().hex)[:8]
+        excel_path = os.path.join(output_dir, f"boq_{sess_code}.xlsx")
+        await asyncio.to_thread(generate_excel_boq, boq_data, excel_path)
+        print(f"📊 Excel BOQ written: {excel_path}")
+
+        # 4. Persist PDF to disk for the download endpoint
+        pdf_path = os.path.join(output_dir, f"boq_{sess_code}.pdf")
+        with open(pdf_path, "wb") as _f:
+            _f.write(pdf_bytes)
+
+        # 5. Email/WhatsApp delivery workflow (background)
         if pdf_bytes:
             asyncio.create_task(
                 asyncio.to_thread(
-                    handle_estimate_workflow, 
-                    final_email, 
-                    final_name, 
+                    handle_estimate_workflow,
+                    final_email,
+                    final_name,
                     pdf_bytes,
                     estimate_reference
                 )
             )
-            
+
             # Construct WhatsApp pre-filled link
             whatsapp_number = os.getenv("FUNDI_WHATSAPP_NUMBER", "254727838624").replace("+", "").strip()
             whatsapp_text = f"Hi Fundi, please send my estimate {estimate_reference}"
             encoded_text = urllib.parse.quote(whatsapp_text)
             whatsapp_link = f"https://wa.me/{whatsapp_number}?text={encoded_text}"
-            
+
             # Construct deterministic Supabase Storage PDF URL
             pdf_url = f"{supabase_url}/storage/v1/object/public/estimates/{estimate_reference}.pdf"
-            
-            response_msg = f"Estimate generated successfully with reference {estimate_reference}."
+
+            response_msg = f"BOQ Estimate generated successfully with reference {estimate_reference}."
             if final_email:
-                response_msg += f" Email sent to {final_email}."
+                response_msg += f" Full BOQ report emailed to {final_email}."
             else:
                 response_msg += " Available for WhatsApp delivery."
-                
+
             return {
                 "status": "success",
                 "message": response_msg,
                 "estimate_reference": estimate_reference,
                 "pdf_url": pdf_url,
-                "whatsapp_link": whatsapp_link
+                "whatsapp_link": whatsapp_link,
+                "excel_download_url": f"/api/estimate/boq/excel/{sess_code}",
+                "boq_pdf_download_url": f"/api/estimate/boq/pdf/{sess_code}",
+                "grand_total": boq_data.get("grand_total", 0)
             }
         else:
-            raise HTTPException(status_code=500, detail="PDF generation failed")
+            raise HTTPException(status_code=500, detail="BOQ PDF generation failed")
             
     except HTTPException as he:
         raise he
@@ -618,7 +720,37 @@ async def consult_fundi(query: ConstructionQuery, request: Request):
                         validated_model = EstimateData(**raw_data)
                         estimate_data = validated_model.model_dump()
                         show_estimate_button = True
+
+                        # Compute full BOQ and generate Excel/PDF downloads
+                        try:
+                            params = extract_building_params(raw_data, query.user_input, updated_session.state if updated_session else {})
+                            boq_data = calculate_full_boq(
+                                house_type=params["house_type"],
+                                location=params["location"],
+                                size_sqm=params["size_sqm"],
+                                finish_level=params["finish_level"]
+                            )
+                            output_dir = os.path.join(os.path.dirname(__file__), "output")
+                            os.makedirs(output_dir, exist_ok=True)
+                            sess_code = session_id[:8] if session_id else uuid.uuid4().hex[:8]
+                            
+                            excel_path = os.path.join(output_dir, f"boq_{sess_code}.xlsx")
+                            generate_excel_boq(boq_data, excel_path)
+                            
+                            pdf_path = os.path.join(output_dir, f"boq_{sess_code}.pdf")
+                            pdf_bytes = generate_full_boq_pdf({"name": raw_data.get("client_name", "Valued Client"), "email": raw_data.get("client_email", "N/A")}, boq_data)
+                            with open(pdf_path, "wb") as f:
+                                f.write(pdf_bytes)
+
+                            estimate_data["boq_data"] = boq_data
+                            estimate_data["excel_download_url"] = f"/api/estimate/boq/excel/{sess_code}"
+                            estimate_data["pdf_download_url"] = f"/api/estimate/boq/pdf/{sess_code}"
+                            print(f"   ✅ BOQ data & Excel/PDF generated for session {sess_code}")
+                        except Exception as boq_err:
+                            print(f"   ⚠️ BOQ auto-generation warning: {boq_err}")
+
                         print(f"   ✅ JSON parsed AND validated successfully. show_estimate_button = {show_estimate_button}")
+
                         
                         # Fix: Make sure session has recent captured client info
                         extracted_name = validated_model.client_name
@@ -860,6 +992,35 @@ async def consult_fundi_stream(query: ConstructionQuery, request: Request):
                         estimate_data = validated_model.model_dump()
                         show_estimate_button = True
 
+                        # Compute full BOQ and generate Excel/PDF downloads
+                        try:
+                            params = extract_building_params(raw_data, query.user_input, session.state if session else {})
+                            boq_data = calculate_full_boq(
+                                house_type=params["house_type"],
+                                location=params["location"],
+                                size_sqm=params["size_sqm"],
+                                finish_level=params["finish_level"]
+                            )
+                            output_dir = os.path.join(os.path.dirname(__file__), "output")
+                            os.makedirs(output_dir, exist_ok=True)
+                            sess_code = session_id[:8] if session_id else uuid.uuid4().hex[:8]
+                            
+                            excel_path = os.path.join(output_dir, f"boq_{sess_code}.xlsx")
+                            generate_excel_boq(boq_data, excel_path)
+                            
+                            pdf_path = os.path.join(output_dir, f"boq_{sess_code}.pdf")
+                            pdf_bytes = generate_full_boq_pdf({"name": raw_data.get("client_name", "Valued Client"), "email": raw_data.get("client_email", "N/A")}, boq_data)
+                            with open(pdf_path, "wb") as f:
+                                f.write(pdf_bytes)
+
+                            estimate_data["boq_data"] = boq_data
+                            estimate_data["excel_download_url"] = f"/api/estimate/boq/excel/{sess_code}"
+                            estimate_data["pdf_download_url"] = f"/api/estimate/boq/pdf/{sess_code}"
+                            print(f"   ✅ BOQ data & Excel/PDF generated for stream session {sess_code}")
+                        except Exception as boq_err:
+                            print(f"   ⚠️ BOQ auto-generation warning: {boq_err}")
+
+
                         extracted_name = raw_data.get("client_name") or raw_data.get("name")
                         extracted_email = raw_data.get("client_email") or raw_data.get("email")
                         if extracted_name or extracted_email:
@@ -898,7 +1059,126 @@ async def consult_fundi_stream(query: ConstructionQuery, request: Request):
         print(f"Error in consult-fundi-stream: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# =============================================================================
+# BOQ MULTI-AGENT & A2UI / HITL ENDPOINTS
+# =============================================================================
+
+class BOQRequest(BaseModel):
+    house_type: str = Field(default="3_bedroom")
+    location: str = Field(default="nairobi")
+    size_sqm: Optional[float] = Field(default=None)
+    finish_level: str = Field(default="standard")
+    force_price_search: bool = Field(default=False)
+
+class BOQApproveRequest(BaseModel):
+    session_id: Optional[str] = Field(default=None)
+    client_name: str = Field(default="Valued Client")
+    client_email: Optional[str] = Field(default=None)
+    client_phone: Optional[str] = Field(default=None)
+    house_type: str = Field(default="3_bedroom")
+    location: str = Field(default="nairobi")
+    size_sqm: Optional[float] = Field(default=None)
+    finish_level: str = Field(default="standard")
+    custom_rates: Optional[Dict[str, float]] = Field(default=None)
+
+@app.post("/api/estimate/boq")
+@limiter.limit("20/minute")
+async def generate_boq_draft(req: BOQRequest, request: Request):
+    """
+    Calculates detailed 7-trade BOQ and returns A2UI dynamic payload for frontend rendering.
+    Performs price cache check and optional Google search price refresh.
+    """
+    try:
+        # 1. Refresh key material prices if search requested
+        if req.force_price_search:
+            search_kenyan_material_price("cement_bag_50kg", force_refresh=True)
+            search_kenyan_material_price("machine_cut_stone_9in", force_refresh=True)
+            search_kenyan_material_price("rebar_y12_length", force_refresh=True)
+
+        # 2. Calculate BOQ
+        boq_data = calculate_full_boq(
+            house_type=req.house_type,
+            location=req.location,
+            size_sqm=req.size_sqm,
+            finish_level=req.finish_level
+        )
+        
+        return {
+            "status": "success",
+            "a2ui_type": "boq_interactive_cards",
+            "boq_data": boq_data
+        }
+    except Exception as e:
+        print(f"❌ Error generating BOQ draft: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/estimate/boq/approve")
+@limiter.limit("20/minute")
+async def approve_and_deliver_boq(req: BOQApproveRequest, request: Request):
+    """
+    HITL Endpoint: Accepts user-approved rates, computes final BOQ, and generates Excel & PDF exports.
+    """
+    try:
+        session_id = req.session_id or f"boq-{uuid.uuid4().hex[:8]}"
+        
+        # 1. Recalculate with custom rates if user modified any in HITL UI
+        boq_data = calculate_full_boq(
+            house_type=req.house_type,
+            location=req.location,
+            size_sqm=req.size_sqm,
+            finish_level=req.finish_level,
+            custom_rates=req.custom_rates
+        )
+
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 2. Generate Excel Spreadsheet
+        excel_filename = f"boq_{session_id}.xlsx"
+        excel_path = os.path.join(output_dir, excel_filename)
+        generate_excel_boq(boq_data, excel_path)
+
+        # 3. Generate PDF Report
+        pdf_filename = f"boq_{session_id}.pdf"
+        pdf_path = os.path.join(output_dir, pdf_filename)
+        client_info = {
+            "name": req.client_name,
+            "email": req.client_email or "N/A",
+            "phone": req.client_phone or "N/A"
+        }
+        pdf_bytes = generate_full_boq_pdf(client_info, boq_data)
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "grand_total": boq_data["grand_total"],
+            "excel_download_url": f"/api/estimate/boq/excel/{session_id}",
+            "pdf_download_url": f"/api/estimate/boq/pdf/{session_id}",
+            "boq_summary": boq_data
+        }
+    except Exception as e:
+        print(f"❌ Error approving BOQ delivery: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/estimate/boq/excel/{session_id}")
+async def download_boq_excel(session_id: str):
+    """Serves downloadable Excel BOQ file."""
+    excel_path = os.path.join(os.path.dirname(__file__), "output", f"boq_{session_id}.xlsx")
+    if not os.path.exists(excel_path):
+        raise HTTPException(status_code=404, detail="Excel file not found or expired.")
+    return FileResponse(excel_path, filename=f"Construction_BOQ_{session_id}.xlsx", media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@app.get("/api/estimate/boq/pdf/{session_id}")
+async def download_boq_pdf(session_id: str):
+    """Serves downloadable PDF BOQ report."""
+    pdf_path = os.path.join(os.path.dirname(__file__), "output", f"boq_{session_id}.pdf")
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF file not found or expired.")
+    return FileResponse(pdf_path, filename=f"Construction_BOQ_{session_id}.pdf", media_type="application/pdf")
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)

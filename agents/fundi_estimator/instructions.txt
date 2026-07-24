@@ -67,29 +67,34 @@ When the user provides their email for the report, you must output the detailed 
 {
   "client_name": "Valued Client",
   "client_email": "user@example.com",
-  "project_title": "3 Bedroom House in Nairobi (Premium)",
+  "project_title": "3 Bedroom House in Nairobi (Standard)",
+  "house_type": "3_bedroom",
+  "location": "nairobi",
+  "size_sqm": 120,
+  "finish_level": "standard",
   "items": [
-    {"item": "Foundation", "description": "Excavation, footing, slab", "cost": "600,000"},
-    {"item": "Walling", "description": "Stone masonry, mortar", "cost": "900,000"},
-    {"item": "Roofing", "description": "Timber truss, iron sheets/tiles", "cost": "700,000"},
-    {"item": "Electrical", "description": "Wiring, fittings, labor", "cost": "400,000"},
-    {"item": "Plumbing", "description": "Piping, sanitary ware, labor", "cost": "350,000"},
-    {"item": "Finishing", "description": "Tiles, paint, ceiling, cabinets", "cost": "1,500,000"},
-    {"item": "Labor", "description": "Skilled and unskilled labor", "cost": "900,000"},
-    {"item": "Contingency", "description": "10% buffer for unforeseen costs", "cost": "535,000"}
+    {"item": "Substructure (Foundation & Slab)", "description": "Excavation, hardcore bed, anti-termite barrier, DPM, BRC mesh, concrete slab (cement bags, sand, ballast)", "cost": "520,000"},
+    {"item": "Superstructure Walling & Ring Beam", "description": "Machine-cut 9-inch stones, mortar, Y12 steel rebar, columns & ring beams", "cost": "580,000"},
+    {"item": "Roofing & Ceiling Structure", "description": "Cypress 2x4 trusses, 2x2 purlins, IT4 Gauge 28 sheets, ridge caps & fascia boards", "cost": "380,000"},
+    {"item": "Finishes (Plaster, Tiles & Paint)", "description": "Wall plastering, 60x60 porcelain floor tiles, ceramic bathroom wall tiles, Crown vinyl paint", "cost": "490,000"},
+    {"item": "Plumbing & Sanitation", "description": "PPR water supply pipes, PVC waste pipes, WC toilet suites, basins & instant shower heaters", "cost": "180,000"},
+    {"item": "Electrical Installation", "description": "Concealed wall conduits, 2.5mm²/1.5mm² copper wiring, 8-way DB unit & sockets", "cost": "140,000"},
+    {"item": "Labor & Workmanship", "description": "Skilled mason fundis, steel fixers, carpenters, electricians & casual helpers", "cost": "250,000"},
+    {"item": "Contingency & Buffer (10%)", "description": "Unforeseen site variations and market price buffer", "cost": "254,000"}
   ],
-  "total_cost": "5,885,000",
-  "cost_per_sqm": "49,041"
+  "total_cost": "2,794,000",
+  "cost_per_sqm": "23,283"
 }
 </ESTIMATE_DATA>
 
 Please check your email in a few moments!"
 
-**IMPORTANT:**
-- Do NOT output the full breakdown table in the chat text unless the user explicitly says they cannot provide an email.
+**CRITICAL INSTRUCTIONS FOR <ESTIMATE_DATA>:**
+- You MUST dynamically parse the user's prompt and conversation context to extract the EXACT `location` (e.g., `"kiambu"`, `"thika"`, `"nakuru"`, `"mombasa"`, `"eldoret"`, `"nairobi"`), `house_type` (e.g., `"1_bedroom"`, `"2_bedroom"`, `"3_bedroom"`, `"4_bedroom"`, `"5_bedroom"`), `size_sqm` (e.g., 80, 120, 160, 200), and `finish_level` (`"basic"`, `"standard"`, `"premium"`).
+- **DO NOT hardcode "nairobi" or "3_bedroom" in <ESTIMATE_DATA> unless the user explicitly requested a 3-bedroom house in Nairobi.**
 - The `<ESTIMATE_DATA>` block MUST be valid JSON inside the tags.
 - **Do NOT wrap the <ESTIMATE_DATA> block in markdown code fences (no ```xml, ```json, or ``` around it). Output the tags directly in the text.**
-- Ensure the costs are realistic for 2025 Kenyan market rates.
+- Ensure the costs are realistic for 2025/2026 Kenyan market rates.
 
 # IMPORTANT DISCLAIMERS (Include in every estimate)
 - "These estimates are approximate based on 2025 Kenyan market rates"

@@ -3,7 +3,7 @@ import uuid
 import io
 import requests
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from urllib.parse import urlparse
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -27,8 +27,10 @@ try:
     from xhtml2pdf import pisa
     XHTML2PDF_AVAILABLE = True
 except ImportError:
+    pisa = None
     XHTML2PDF_AVAILABLE = False
 # =====================================
+
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -144,7 +146,6 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
         # Fallback to legacy method
         return generate_simple_pdf(client_data, estimate_items)
     
-    # Generate PDF with WeasyPrint
     if WEASYPRINT_AVAILABLE:
         try:
             print(f"📄 Generating PDF with WeasyPrint v{WEASYPRINT_VERSION}...")
@@ -166,6 +167,71 @@ def generate_professional_pdf(client_data: Dict[str, str], estimate_items: List[
             "WeasyPrint renderer is unavailable and legacy fallback is disabled. "
             "Install WeasyPrint system dependencies or set PDF_ALLOW_LEGACY_FALLBACK=true."
         )
+
+
+def generate_full_boq_pdf(client_data: Dict[str, str], boq_data: Dict[str, Any]) -> bytes:
+    """
+    Generates a multi-page, detailed Bill of Quantities (BOQ) PDF using boq_template.html.
+    """
+    meta = boq_data.get("project_metadata", {})
+    formatted_trades = []
+    for t in boq_data.get('trades', []):
+        f_items = []
+        for item in t.get('items', []):
+            f_items.append({
+                **item,
+                'rate_fmt': f"{item.get('rate', 0):,.0f}",
+                'amount_fmt': f"{item.get('amount', 0):,.0f}"
+            })
+        formatted_trades.append({
+            **t,
+            'items': f_items,
+            'trade_total_fmt': f"{t.get('trade_total', 0):,.0f}"
+        })
+
+    context = {
+        'client_name': client_data.get('name', 'Valued Client'),
+        'project_title': f"{meta.get('house_type', 'House').title()} BOQ - {meta.get('location_name', 'Kenya')}",
+        'session_id': str(uuid.uuid4()),
+        'date': datetime.now().strftime("%B %d, %Y"),
+        'house_type': meta.get('house_type', '').replace('_', ' ').title(),
+        'location_name': meta.get('location_name', 'Nairobi'),
+        'size_sqm': meta.get('size_sqm', 100),
+        'finish_level': meta.get('finish_level', '').title(),
+        'grand_total': f"{boq_data.get('grand_total', 0):,.0f}",
+        'gross_subtotal_fmt': f"{boq_data.get('gross_subtotal', 0):,.0f}",
+        'contingency_amount_fmt': f"{boq_data.get('contingency_amount', 0):,.0f}",
+        'trades': formatted_trades,
+        'shopping_list': [{'material': k, 'quantity': v} for k, v in boq_data.get('shopping_list_summary', {}).items()],
+        'logo_url': LOGO_URL if _is_safe_logo_source(LOGO_URL) else None,
+    }
+
+
+
+    try:
+        template = jinja_env.get_template('boq_template.html')
+        html_content = template.render(**context)
+    except Exception as e:
+        print(f"❌ BOQ Template Error: {e}")
+        return generate_simple_pdf(client_data, [])
+
+    if WEASYPRINT_AVAILABLE:
+        try:
+            html = HTML(string=html_content, base_url=os.path.dirname(os.path.abspath(__file__)))
+            return html.write_pdf()
+        except Exception as e:
+            print(f"⚠️ WeasyPrint Error in BOQ PDF: {e}")
+
+    if XHTML2PDF_AVAILABLE:
+        try:
+            pdf_buffer = io.BytesIO()
+            pisa.CreatePDF(html_content, dest=pdf_buffer)
+            return pdf_buffer.getvalue()
+        except Exception as e:
+            print(f"❌ xhtml2pdf Error: {e}")
+
+    raise RuntimeError("No PDF generation engine available.")
+
 
 # =============================================================================
 # 3. PDF GENERATION (xhtml2pdf - Fallback)
@@ -391,9 +457,13 @@ def generate_simple_pdf(client_data: Dict[str, str], estimate_items: List[Dict[s
     """
 
     # Convert HTML to PDF
+    if not pisa:
+        print("❌ xhtml2pdf/pisa not available")
+        return b""
     print("📄 Generating PDF with xhtml2pdf...")
     pdf_buffer = io.BytesIO()
     pisa_status = pisa.CreatePDF(io.StringIO(html_content), dest=pdf_buffer)
+
     
     if pisa_status.err:
         print("❌ PDF Generation Error")

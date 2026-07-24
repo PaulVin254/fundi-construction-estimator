@@ -47,3 +47,30 @@ $$ language 'plpgsql';
 -- Create a trigger to call the function
 CREATE TRIGGER update_sessions_updated_at BEFORE UPDATE ON sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
+-- Supabase Material Prices Cache Table
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS material_prices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    material_key TEXT UNIQUE NOT NULL,
+    material_name TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    category TEXT NOT NULL,
+    price_nairobi NUMERIC NOT NULL,
+    price_mombasa NUMERIC NOT NULL,
+    price_upcountry NUMERIC NOT NULL,
+    source TEXT NOT NULL DEFAULT 'baseline_qs',
+    last_verified_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_material_prices_key ON material_prices(material_key);
+CREATE INDEX IF NOT EXISTS idx_material_prices_category ON material_prices(category);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON material_prices TO anon;
+
+CREATE TRIGGER update_material_prices_updated_at BEFORE UPDATE ON material_prices
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

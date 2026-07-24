@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bill of Quantities — {{ project_title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================================
+           DESIGN TOKENS
+           ============================================================ */
+        :root {
+            /* Typography */
+            --font-display: 'Plus Jakarta Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --font-body: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+
+            /* Monochrome Slate & Charcoal Palette */
+            --ink:          #0f172a;   /* Midnight — primary text, dark blocks          */
+            --charcoal:     #1e293b;   /* Charcoal — secondary dark surfaces            */
+            --graphite:     #334155;   /* Graphite — body copy                          */
+            --steel:        #475569;   /* Steel — muted labels                          */
+            --silver:       #64748b;   /* Silver — secondary labels, table headers      */
+            --mist:         #94a3b8;   /* Mist — tertiary, metadata, timestamps         */
+            --cloud:        #cbd5e1;   /* Cloud — borders, dividers                     */
+            --fog:          #e2e8f0;   /* Fog — hairline rules                          */
+            --snow:         #f1f5f9;   /* Snow — zebra stripe, subtle tint              */
+            --frost:        #f8fafc;   /* Frost — card background                       */
+            --white:        #ffffff;
+
+            /* Spacing Scale (4px base) */
+            --sp-1: 4px;   --sp-2: 8px;   --sp-3: 12px;  --sp-4: 16px;
+            --sp-5: 20px;  --sp-6: 24px;  --sp-8: 32px;  --sp-10: 40px;
+
+            /* Radii */
+            --radius-sm: 2px;
+        }
+
+        /* ============================================================
+           PAGE SETUP
+           ============================================================ */
+        @page {
+            size: A4;
+            margin: 20mm 18mm 24mm 18mm;
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages) "  ·  BOQ-{{ session_id[:8]|upper }}";
+                font-family: 'Inter', Helvetica, sans-serif;
+                font-size: 6.5pt;
+                color: var(--mist);
+                letter-spacing: 0.06em;
+            }
+            @top-right {
+                content: "CONFIDENTIAL";
+                font-family: 'Inter', Helvetica, sans-serif;
+                font-size: 6pt;
+                color: var(--cloud);
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+            }
+        }
+
+        /* ============================================================
+           BASE RESET & TYPOGRAPHY
+           ============================================================ */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-body);
+            font-size: 8.5pt;
+            line-height: 1.55;
+            color: var(--graphite);
+            background: var(--white);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Tabular numbers for all financial data */
+        .tabnum {
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 20pt;
+            font-weight: 800;
+            color: var(--ink);
+            letter-spacing: -0.04em;
+            line-height: 1.15;
+        }
+        h2 {
+            font-family: var(--font-display);
+            font-size: 11pt;
+            font-weight: 700;
+            color: var(--ink);
+            letter-spacing: -0.02em;
+            margin-bottom: var(--sp-3);
+            margin-top: var(--sp-8);
+        }
+        h3 {
+            font-family: var(--font-display);
+            font-size: 9pt;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: var(--sp-1);
+        }
+
+        /* ============================================================
+           DOCUMENT HEADER
+           ============================================================ */
+        .doc-header {
+            padding-bottom: var(--sp-5);
+            margin-bottom: var(--sp-6);
+            border-bottom: 1px solid var(--fog);
+        }
+        .header-layout {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .header-layout td {
+            vertical-align: top;
+        }
+
+        /* Brand / Wordmark */
+        .brand-wordmark {
+            font-family: var(--font-display);
+            font-size: 7pt;
+            font-weight: 700;
+            color: var(--steel);
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            margin-bottom: var(--sp-2);
+            display: block;
+        }
+        .brand-logo {
+            height: 28px;
+            margin-bottom: var(--sp-2);
+            display: block;
+        }
+        .doc-subtitle {
+            font-family: var(--font-body);
+            font-size: 8pt;
+            color: var(--mist);
+            letter-spacing: 0.02em;
+            margin-top: var(--sp-1);
+        }
+
+        /* Reference & Date */
+        .doc-ref-cell {
+            text-align: right;
+            vertical-align: top;
+        }
+        .doc-badge {
+            display: inline-block;
+            background-color: var(--frost);
+            border: 1px solid var(--fog);
+            color: var(--steel);
+            font-family: var(--font-body);
+            font-size: 7pt;
+            font-weight: 600;
+            padding: 3px 10px;
+            letter-spacing: 0.08em;
+            border-radius: var(--radius-sm);
+        }
+        .doc-date {
+            font-family: var(--font-body);
+            font-size: 7pt;
+            color: var(--mist);
+            margin-top: var(--sp-1);
+            text-align: right;
+        }
+
+        /* ============================================================
+           PROJECT SUMMARY CARD
+           ============================================================ */
+        .summary-card {
+            background-color: var(--frost);
+            border: 1px solid var(--fog);
+            padding: var(--sp-4) var(--sp-5);
+            margin-bottom: var(--sp-6);
+            border-radius: var(--radius-sm);
+        }
+        .summary-eyebrow {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--mist);
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            margin-bottom: var(--sp-3);
+            display: block;
+        }
+        .summary-grid {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .summary-grid td {
+            padding: var(--sp-2) 0;
+            vertical-align: top;
+            width: 25%;
+        }
+        /* Vertical divider between summary columns */
+        .summary-grid td + td {
+            border-left: 1px solid var(--fog);
+            padding-left: var(--sp-4);
+        }
+        .meta-label {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--mist);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .meta-value {
+            font-family: var(--font-display);
+            font-size: 9.5pt;
+            font-weight: 600;
+            color: var(--ink);
+            display: block;
+        }
+        .meta-value-hero {
+            font-family: var(--font-display);
+            font-size: 14pt;
+            font-weight: 800;
+            color: var(--ink);
+            display: block;
+            letter-spacing: -0.02em;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+
+        /* ============================================================
+           SECTION LABEL
+           ============================================================ */
+        .section-label {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--mist);
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            margin-bottom: var(--sp-4);
+        }
+        .section-rule {
+            border: none;
+            border-top: 1px solid var(--fog);
+            margin: var(--sp-5) 0;
+        }
+
+        /* ============================================================
+           TRADE SECTION
+           ============================================================ */
+        .trade-section {
+            margin-bottom: var(--sp-6);
+        }
+
+        /* Dark slate trade header bar */
+        .trade-header-bar {
+            background-color: var(--ink);
+            padding: 9px var(--sp-4);
+            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+        }
+        .trade-header-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .trade-header-table td {
+            vertical-align: middle;
+        }
+        .trade-code {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 700;
+            color: var(--cloud);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .trade-name {
+            font-family: var(--font-display);
+            font-size: 9pt;
+            font-weight: 700;
+            color: var(--white);
+            letter-spacing: -0.01em;
+        }
+        .trade-subtotal-header {
+            font-family: var(--font-display);
+            font-size: 9pt;
+            font-weight: 700;
+            color: var(--cloud);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+
+        /* Layperson callout — subtle, minimal */
+        .layman-note {
+            background-color: var(--frost);
+            border-left: 2px solid var(--cloud);
+            padding: 6px var(--sp-3);
+            font-size: 7.5pt;
+            color: var(--silver);
+            font-style: italic;
+            margin-bottom: 0;
+        }
+
+        /* ============================================================
+           DATA TABLE (BOQ items)
+           ============================================================ */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 0;
+        }
+        .data-table thead tr {
+            border-bottom: 1px solid var(--cloud);
+        }
+        .data-table th {
+            padding: 6px 8px;
+            text-align: left;
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--silver);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            background-color: var(--snow);
+        }
+        .data-table th.num {
+            text-align: right;
+        }
+        .data-table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid var(--snow);
+            vertical-align: top;
+            font-size: 8pt;
+            color: var(--graphite);
+        }
+        /* Subtle zebra striping */
+        .data-table tbody tr:nth-child(even) td {
+            background-color: var(--frost);
+        }
+        .data-table tbody tr:nth-child(odd) td {
+            background-color: var(--white);
+        }
+
+        .item-code {
+            font-family: var(--font-body);
+            font-size: 7pt;
+            font-weight: 600;
+            color: var(--mist);
+            letter-spacing: 0.04em;
+        }
+        .item-name {
+            font-family: var(--font-display);
+            font-weight: 600;
+            color: var(--ink);
+            display: block;
+            font-size: 8pt;
+        }
+        .item-desc {
+            font-size: 7pt;
+            color: var(--mist);
+            display: block;
+            margin-top: 1px;
+        }
+        .num {
+            text-align: right;
+        }
+        .amount-cell {
+            font-weight: 600;
+            color: var(--ink);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+        .rate-cell {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+            color: var(--graphite);
+        }
+        .qty-cell {
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+
+        /* Trade subtotal row */
+        .trade-subtotal-row td {
+            background-color: var(--snow) !important;
+            border-top: 1px solid var(--fog);
+            border-bottom: 2px solid var(--fog);
+            padding: 7px 8px;
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 8pt;
+            color: var(--ink);
+        }
+
+        /* ============================================================
+           CONSOLIDATED PURCHASING LIST
+           ============================================================ */
+        .shopping-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: var(--sp-5);
+        }
+        .shopping-table th {
+            background-color: var(--snow);
+            padding: 6px 10px;
+            text-align: left;
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--silver);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--fog);
+        }
+        .shopping-table td {
+            padding: 5px 10px;
+            border-bottom: 1px solid var(--snow);
+            font-size: 8pt;
+            color: var(--graphite);
+        }
+        .shopping-table tbody tr:nth-child(even) td {
+            background-color: var(--frost);
+        }
+        .mat-name {
+            font-family: var(--font-display);
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .mat-qty {
+            font-family: var(--font-body);
+            font-weight: 700;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+        .mat-spec {
+            color: var(--mist);
+            font-size: 7.5pt;
+        }
+
+        /* ============================================================
+           GRAND TOTAL BLOCK
+           ============================================================ */
+        .totals-block {
+            width: 55%;
+            margin-left: 45%;
+            border-collapse: collapse;
+            margin-bottom: var(--sp-6);
+        }
+        .totals-block td {
+            padding: 6px 10px;
+            font-size: 8.5pt;
+        }
+        .totals-row td {
+            border-bottom: 1px solid var(--snow);
+            color: var(--graphite);
+        }
+        .totals-label {
+            text-align: right;
+            color: var(--silver);
+            font-size: 8pt;
+        }
+        .totals-amount {
+            text-align: right;
+            font-weight: 600;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+        /* Grand total — dark ink block */
+        .totals-grand td {
+            background-color: var(--ink);
+            color: var(--white);
+            padding: 11px 10px;
+        }
+        .totals-grand-label {
+            text-align: right;
+            font-family: var(--font-body);
+            font-size: 7.5pt;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--cloud);
+        }
+        .totals-grand-amount {
+            text-align: right;
+            font-family: var(--font-display);
+            font-size: 13pt;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: var(--white);
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+
+        /* ============================================================
+           DISCLAIMER
+           ============================================================ */
+        .disclaimer {
+            background-color: var(--frost);
+            border: 1px solid var(--fog);
+            padding: 10px var(--sp-4);
+            font-size: 7pt;
+            color: var(--silver);
+            margin-bottom: var(--sp-6);
+            line-height: 1.7;
+            border-radius: var(--radius-sm);
+        }
+        .disclaimer strong {
+            color: var(--steel);
+        }
+
+        /* ============================================================
+           EXPERT ADVISORY CTA
+           ============================================================ */
+        .cta-block {
+            background-color: var(--ink);
+            padding: var(--sp-5) var(--sp-6);
+            margin-top: var(--sp-3);
+            border-radius: var(--radius-sm);
+        }
+        .cta-eyebrow {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 700;
+            color: var(--silver);
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            margin-bottom: var(--sp-2);
+        }
+        .cta-headline {
+            font-family: var(--font-display);
+            font-size: 14pt;
+            font-weight: 800;
+            color: var(--white);
+            letter-spacing: -0.03em;
+            margin-bottom: var(--sp-2);
+            line-height: 1.2;
+        }
+        .cta-body {
+            font-family: var(--font-body);
+            font-size: 8pt;
+            color: var(--mist);
+            line-height: 1.65;
+            margin-bottom: var(--sp-5);
+        }
+        .cta-channels {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: var(--sp-4);
+        }
+        .cta-channels td {
+            padding: 0 var(--sp-2);
+            vertical-align: top;
+            width: 33.33%;
+        }
+        .cta-channels td:first-child { padding-left: 0; }
+        .cta-channels td:last-child { padding-right: 0; }
+        .channel-card {
+            background-color: var(--charcoal);
+            padding: 10px var(--sp-3);
+            border-radius: var(--radius-sm);
+        }
+        .channel-icon {
+            font-size: 13pt;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .channel-type {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--steel);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 1px;
+        }
+        .channel-value {
+            font-family: var(--font-display);
+            font-size: 8pt;
+            font-weight: 700;
+            color: var(--fog);
+            display: block;
+        }
+        .cta-services-label {
+            font-family: var(--font-body);
+            font-size: 6.5pt;
+            font-weight: 600;
+            color: var(--steel);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: var(--sp-2);
+        }
+        .cta-services {
+            font-size: 7.5pt;
+            color: var(--mist);
+            line-height: 1.9;
+        }
+        .cta-services .bullet {
+            color: var(--silver);
+            font-weight: 700;
+        }
+
+        /* ============================================================
+           UTILITIES
+           ============================================================ */
+        .page-break { page-break-before: always; }
+        .no-break    { page-break-inside: avoid; }
+        .text-right  { text-align: right; }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         DOCUMENT HEADER
+         ============================================================ -->
+    <div class="doc-header">
+        <table class="header-layout">
+            <tr>
+                <td style="width: 62%;">
+                    {% if logo_url %}
+                    <img src="{{ logo_url }}" alt="Logo" class="brand-logo">
+                    {% else %}
+                    <span class="brand-wordmark">Eris Engineering&ensp;·&ensp;Fundi Estimator</span>
+                    {% endif %}
+                    <h1>Bill of Quantities</h1>
+                    <span class="doc-subtitle">Detailed Material Schedule &amp; Cost Breakdown&ensp;&mdash;&ensp;{{ project_title }}</span>
+                </td>
+                <td class="doc-ref-cell" style="width: 38%;">
+                    <span class="doc-badge">BOQ&#8209;{{ session_id[:8]|upper }}</span>
+                    <div class="doc-date">{{ date }}</div>
+                    <div class="doc-date" style="margin-top:3px; color: #cbd5e1;">www.eris.co.ke</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- ============================================================
+         PROJECT SUMMARY CARD
+         ============================================================ -->
+    <div class="summary-card no-break">
+        <span class="summary-eyebrow">Project Summary</span>
+        <table class="summary-grid">
+            <tr>
+                <td>
+                    <span class="meta-label">Client</span>
+                    <span class="meta-value">{{ client_name }}</span>
+                </td>
+                <td>
+                    <span class="meta-label">Building Type</span>
+                    <span class="meta-value">{{ house_type }}</span>
+                </td>
+                <td>
+                    <span class="meta-label">Plinth Area</span>
+                    <span class="meta-value">{{ size_sqm }} m&sup2;</span>
+                </td>
+                <td>
+                    <span class="meta-label">Region</span>
+                    <span class="meta-value">{{ location_name }}</span>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <span class="meta-label">Finish Tier</span>
+                    <span class="meta-value">{{ finish_level }}</span>
+                </td>
+                <td>
+                    <span class="meta-label">Document Date</span>
+                    <span class="meta-value">{{ date }}</span>
+                </td>
+                <td colspan="2">
+                    <span class="meta-label">Estimated Grand Total</span>
+                    <span class="meta-value-hero">KES {{ grand_total }}</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- ============================================================
+         ITEMIZED TRADES BREAKDOWN
+         ============================================================ -->
+    <div class="section-label">Itemized Trades Breakdown</div>
+
+    {% for trade in trades %}
+    <div class="trade-section no-break">
+        <!-- Trade Header Bar -->
+        <div class="trade-header-bar">
+            <table class="trade-header-table">
+                <tr>
+                    <td>
+                        <span class="trade-code">{{ trade.trade_code }}</span>
+                        <span class="trade-name">&ensp;&mdash;&ensp;{{ trade.trade_name }}</span>
+                    </td>
+                    <td class="trade-subtotal-header">KES {{ trade.trade_total_fmt }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Layperson Note -->
+        <div class="layman-note">
+            {{ trade.layman_summary }}
+        </div>
+
+        <!-- BOQ Items Table -->
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="width:7%;">Code</th>
+                    <th style="width:39%;">Item &amp; Description</th>
+                    <th style="width:8%;">Unit</th>
+                    <th style="width:9%;">Qty</th>
+                    <th class="num" style="width:18.5%;">Rate (KES)</th>
+                    <th class="num" style="width:18.5%;">Amount (KES)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in trade['items'] %}
+                <tr>
+                    <td><span class="item-code">{{ item.item_code }}</span></td>
+                    <td>
+                        <span class="item-name">{{ item.name }}</span>
+                        <span class="item-desc">{{ item.description }}</span>
+                    </td>
+                    <td>{{ item.unit }}</td>
+                    <td class="qty-cell">{{ item.quantity }}</td>
+                    <td class="rate-cell">{{ item.rate_fmt }}</td>
+                    <td class="amount-cell">{{ item.amount_fmt }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="trade-subtotal-row">
+                    <td colspan="5" class="text-right">{{ trade.trade_name }} Subtotal</td>
+                    <td class="text-right amount-cell">KES {{ trade.trade_total_fmt }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+
+    <!-- ============================================================
+         CONSOLIDATED PURCHASING LIST
+         ============================================================ -->
+    <div class="page-break"></div>
+
+    <h2>Consolidated Material Purchasing List</h2>
+    <p style="font-size: 7.5pt; color: #94a3b8; margin-bottom: 14px; line-height: 1.6;">
+        Use this table to source materials from your local hardware supplier. All quantities include a standard 10% waste &amp; breakage allowance per KEBS construction guidelines.
+    </p>
+
+    <table class="shopping-table">
+        <thead>
+            <tr>
+                <th style="width:42%;">Construction Material</th>
+                <th style="width:25%;">Required Quantity</th>
+                <th style="width:33%;">Specification</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mat_item in shopping_list %}
+            <tr>
+                <td><span class="mat-name">{{ mat_item.material }}</span></td>
+                <td><span class="mat-qty">{{ mat_item.quantity }}</span></td>
+                <td><span class="mat-spec">KEBS Verified · Kenya Market Standard</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- ============================================================
+         COST SUMMARY / GRAND TOTAL
+         ============================================================ -->
+    <h2>Cost Summary</h2>
+    <table class="totals-block">
+        <tr class="totals-row">
+            <td class="totals-label">Gross Materials &amp; Labor Subtotal</td>
+            <td class="totals-amount">KES {{ gross_subtotal_fmt }}</td>
+        </tr>
+        <tr class="totals-row">
+            <td class="totals-label">Contingency &amp; Market Buffer (10%)</td>
+            <td class="totals-amount">KES {{ contingency_amount_fmt }}</td>
+        </tr>
+        <tr class="totals-grand">
+            <td class="totals-grand-label">Estimated Grand Total</td>
+            <td class="totals-grand-amount">KES {{ grand_total }}</td>
+        </tr>
+    </table>
+
+    <!-- ============================================================
+         DISCLAIMER
+         ============================================================ -->
+    <div class="disclaimer no-break">
+        <strong>Important Disclaimer &amp; Notes:</strong><br/>
+        This Bill of Quantities is an indicative estimate prepared using 2025/2026 Kenyan market rates sourced from industry benchmarks and regional pricing data.
+        Actual costs will vary based on site conditions, material quality selections, contractor rates, and prevailing market prices at time of purchase.
+        This document does <strong>not</strong> constitute a binding quotation or professional QS certification.
+        We strongly recommend obtaining at least <strong>3 competitive contractor quotes</strong> and having all contracts reviewed before committing to any construction works.
+    </div>
+
+    <!-- ============================================================
+         EXPERT ADVISORY CTA
+         ============================================================ -->
+    <div class="cta-block no-break">
+        <div class="cta-eyebrow">Next Steps&ensp;&mdash;&ensp;Professional Construction Guidance</div>
+        <div class="cta-headline">Ready to Build?<br/>Let Our Engineers Guide You.</div>
+        <div class="cta-body">
+            This BOQ gives you a clear picture of your investment. But navigating contractors, material sourcing,
+            and site supervision is where most homeowners lose money. Our team of licensed Civil Engineers and
+            Quantity Surveyors can guide you from this estimate all the way to a completed, quality-verified
+            building&ensp;&mdash;&ensp;without overpaying.
+        </div>
+
+        <!-- Contact Channels -->
+        <table class="cta-channels">
+            <tr>
+                <td>
+                    <div class="channel-card">
+                        <span class="channel-icon">&#128241;</span>
+                        <span class="channel-type">WhatsApp &amp; Call</span>
+                        <span class="channel-value">+254 727 838 624</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="channel-card">
+                        <span class="channel-icon">&#128231;</span>
+                        <span class="channel-type">Email</span>
+                        <span class="channel-value">estimates@eris.co.ke</span>
+                    </div>
+                </td>
+                <td>
+                    <div class="channel-card">
+                        <span class="channel-icon">&#127760;</span>
+                        <span class="channel-type">Web &amp; Portfolio</span>
+                        <span class="channel-value">www.eris.co.ke</span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- Services -->
+        <div class="cta-services-label">How We Help You Build Safely &amp; Efficiently</div>
+        <div class="cta-services">
+            <span class="bullet">&#10003;</span>&ensp;Contractor vetting &amp; competitive quote auditing&ensp;&mdash;&ensp;we check if your contractor is overcharging<br/>
+            <span class="bullet">&#10003;</span>&ensp;Material quality verification &amp; supplier sourcing at wholesale rates<br/>
+            <span class="bullet">&#10003;</span>&ensp;Full-time site supervision by a licensed Civil Engineer (NCA &amp; EBK Registered)<br/>
+            <span class="bullet">&#10003;</span>&ensp;Architectural drawings, structural design &amp; county building approval permits<br/>
+            <span class="bullet">&#10003;</span>&ensp;Progress-based milestone payment schedules to protect your investment
+        </div>
+    </div>
+
+</body>
+</html>
