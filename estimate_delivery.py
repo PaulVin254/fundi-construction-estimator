@@ -203,7 +203,7 @@ def generate_full_boq_pdf(client_data: Dict[str, str], boq_data: Dict[str, Any])
         'contingency_amount_fmt': f"{boq_data.get('contingency_amount', 0):,.0f}",
         'trades': formatted_trades,
         'shopping_list': [{'material': k, 'quantity': v} for k, v in boq_data.get('shopping_list_summary', {}).items()],
-        'logo_url': LOGO_URL if _is_safe_logo_source(LOGO_URL) else None,
+        'logo_url': os.path.join(os.path.dirname(__file__), 'templates', 'assets', 'eris-engineering-logo.svg') if os.path.exists(os.path.join(os.path.dirname(__file__), 'templates', 'assets', 'eris-engineering-logo.svg')) else (LOGO_URL if _is_safe_logo_source(LOGO_URL) else None),
     }
 
 
