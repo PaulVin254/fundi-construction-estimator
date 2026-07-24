@@ -135,20 +135,43 @@ FINISH_LEVELS = {
 def get_location_code(location_name: str) -> str:
     """Convert location name to code (nairobi, mombasa, upcountry)."""
     if not location_name:
-        return "nairobi"
+        return "upcountry"
     loc = location_name.lower().strip()
     
     # Coastal locations
     if any(k in loc for k in ["mombasa", "mom", "coast", "malindi", "kilifi", "diani", "ukunda", "kwale", "lamu", "nyali", "bamburi", "mtwapa"]):
         return "mombasa"
-    # Upcountry towns (different material quarry costs and labor rates)
-    elif any(k in loc for k in ["nakuru", "eldoret", "kisumu", "nyeri", "meru", "kakamega", "kericho", "kisii", "embu", "naivasha", "kitale", "bungoma", "narok"]):
-        return "upcountry"
     # Nairobi & Metro (Kiambu, Ruiru, Thika, Kikuyu, Kitengela, Rongai, Kajiado, Athi River)
-    elif any(k in loc for k in ["nairobi", "nai", "kiambu", "ruiru", "thika", "kikuyu", "kitengela", "rongai", "kajiado", "athi river", "syokimau"]):
+    elif any(k in loc for k in ["nairobi", "nai", "kiambu", "ruiru", "thika", "kikuyu", "kitengela", "rongai", "kajiado", "athi river", "syokimau", "embakasi", "westlands", "karen"]):
         return "nairobi"
+    # Upcountry towns (all other regions — Western, Nyanza, Rift Valley, Central, Eastern, North Eastern)
+    elif any(k in loc for k in [
+        # Western Kenya
+        "kibabii", "bungoma", "kakamega", "webuye", "malaba", "kimilili", "tongaren",
+        "vihiga", "mbale", "luanda", "hamisi",
+        # Rift Valley
+        "nakuru", "eldoret", "uasin gishu", "kitale", "kericho", "bomet", "narok",
+        "naivasha", "gilgil", "isiolo", "nanyuki", "nyahururu", "ol kalou", "kabarnet",
+        "iten", "kapenguria", "lodwar", "turkana", "baringo", "kabarnet",
+        # Nyanza
+        "kisumu", "homa bay", "migori", "kisii", "nyamira", "siaya", "bondo",
+        "kendu bay", "sondu", "rongo",
+        # Central
+        "nyeri", "muranga", "kerugoya", "karatina", "othaya", "naro moru",
+        "sagana", "wangige", "limuru",
+        # Eastern
+        "meru", "embu", "machakos", "kitui", "marsabit", "moyale", "garba tulla",
+        "mwingi", "wote", "mutomo",
+        # North Eastern
+        "garissa", "wajir", "mandera",
+        # South Eastern
+        "voi", "taveta", "wundanyi"
+    ]):
+        return "upcountry"
     else:
-        return "nairobi"
+        # Default: treat unknown towns as upcountry (safer/cheaper estimate
+        # rather than silently applying Nairobi rates)
+        return "upcountry"
 
 
 

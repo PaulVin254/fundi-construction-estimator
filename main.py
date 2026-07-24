@@ -163,10 +163,10 @@ class EstimateData(BaseModel):
     client_name: Optional[str] = Field(None, max_length=150)
     client_email: Optional[str] = Field(None, max_length=250)
     project_title: str = Field(..., max_length=250)
-    house_type: Optional[str] = Field(default="3_bedroom")
-    location: Optional[str] = Field(default="nairobi")
+    house_type: Optional[str] = Field(default=None)
+    location: Optional[str] = Field(default=None)  # Never default to nairobi — let extract_building_params resolve it
     size_sqm: Optional[float] = Field(default=None)
-    finish_level: Optional[str] = Field(default="standard")
+    finish_level: Optional[str] = Field(default=None)
     items: List[EstimateItem] = Field(..., max_length=200)
     total_cost: Optional[str] = Field(None, max_length=50)
     cost_per_sqm: Optional[str] = Field(None, max_length=50)
@@ -227,20 +227,35 @@ def extract_building_params(raw_data: dict, user_text: str = "", session_state: 
     """
     combined_text = f"{user_text} {json.dumps(session_state or {})}".lower()
 
-    # 1. Location extraction
+    # 1. Location extraction — only override if LLM left it empty/None
     loc = raw_data.get("location")
-    if not loc or loc.lower() == "nairobi":
+    if not loc:
+        # LLM gave us no location at all — scan from user text and session
         known_locations = [
-            "kiambu", "thika", "ruiru", "kikuyu", "mombasa", "nakuru", "eldoret",
-            "kisumu", "nyeri", "meru", "machakos", "naivasha", "kitengela", "rongai",
-            "kajiado", "malindi", "kilifi", "diani", "kericho", "kisii", "kakamega",
-            "nairobi"
+            # Nairobi Metro
+            "nairobi", "kiambu", "thika", "ruiru", "kikuyu", "kitengela", "rongai",
+            "kajiado", "embakasi", "westlands", "karen", "syokimau",
+            # Western Kenya
+            "kibabii", "bungoma", "kakamega", "webuye", "kimilili", "vihiga", "mbale",
+            # Rift Valley
+            "nakuru", "eldoret", "kitale", "kericho", "naivasha", "narok", "bomet",
+            "nanyuki", "nyahururu", "iten", "baringo", "kabarnet", "lodwar",
+            # Nyanza
+            "kisumu", "kisii", "homa bay", "migori", "nyamira", "siaya", "rongo",
+            # Central
+            "nyeri", "muranga", "kerugoya", "karatina", "limuru", "sagana",
+            # Eastern
+            "meru", "embu", "machakos", "kitui", "mwingi",
+            # Coast
+            "mombasa", "malindi", "kilifi", "diani", "kwale", "lamu",
+            # North Eastern
+            "garissa", "wajir", "mandera",
         ]
         for lkw in known_locations:
             if lkw in combined_text:
                 loc = lkw
                 break
-    loc = loc or "nairobi"
+    loc = loc or "upcountry"
 
     # 2. House type / bedrooms extraction
     ht = raw_data.get("house_type")
