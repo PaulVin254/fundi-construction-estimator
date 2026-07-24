@@ -930,6 +930,9 @@ async def consult_fundi_stream(query: ConstructionQuery, request: Request):
 
         async def event_generator():
             fundi_response = ""
+            # Emit immediate status so the frontend gets a response signal right away
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing construction requirements...'})}\n\n"
+
             events = runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
