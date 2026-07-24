@@ -139,8 +139,10 @@ pillow==12.3.0
     # via weasyprint
 postgrest==2.31.0
     # via supabase
-propcache==0.5.2
-    # via yarl
+et-xmlfile==2.0.0
+    # via openpyxl
+openpyxl==3.1.5
+    # via version-1-wesbite-builder-simple (pyproject.toml)
 pyasn1==0.6.3
     # via pyasn1-modules
 pyasn1-modules==0.4.2
